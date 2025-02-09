@@ -1,0 +1,3 @@
+[ollama]
+current_loaded_model = phi4-reasoning:latest
+
