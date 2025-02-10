@@ -77,12 +77,14 @@ The `config.ini` file stores:
 
 ```
 ollama_consumer/
-├── main.py              # Main application with chat interface
-├── test_ollama.py       # Test utilities and functions
-├── config.ini           # Configuration file (created from example)
-├── config.ini.example   # Example configuration
-├── LICENSE              # GPL v3 License
-└── README.md           # This file
+├── main.py                # Main application with chat interface
+├── test_ollama.py         # Test utilities and functions
+├── benchmark.py           # Model benchmarking script
+├── sample_questions.json  # Sample benchmark questions
+├── config.ini             # Configuration file (created from example)
+├── config.ini.example     # Example configuration
+├── LICENSE                # GPL v3 License
+└── README.md             # This file
 ```
 
 ## Error Handling
@@ -101,6 +103,67 @@ Run the test suite:
 ```bash
 python test_ollama.py
 ```
+
+## Benchmarking
+
+The project includes a comprehensive benchmarking tool to evaluate model performance:
+
+### Quick Benchmark
+
+Run a benchmark with default questions on all available models:
+
+```bash
+python benchmark.py
+```
+
+### Advanced Benchmarking Options
+
+```bash
+# Quiet mode (less output)
+python benchmark.py --quiet
+
+# Custom output filename
+python benchmark.py --output my_benchmark_results.json
+
+# Use custom questions from a JSON file
+python benchmark.py --custom-questions sample_questions.json
+
+# Combine options
+python benchmark.py --output benchmark_2025_01_15.json --custom-questions my_questions.json --quiet
+```
+
+### Benchmark Features
+
+- **Automatic Model Discovery**: Tests all locally available models
+- **Load Time Measurement**: Records how long each model takes to load
+- **Inference Time Tracking**: Measures response time for each question
+- **Response Cleaning**: Removes thinking tags to store only final answers
+- **Comprehensive Results**: Saves detailed JSON reports with:
+  - Model information and metadata
+  - Load times and inference times
+  - Questions and cleaned responses
+  - Error tracking and summary statistics
+  - Performance comparisons
+
+### Custom Questions
+
+Create a JSON file with your own questions:
+
+```json
+[
+  "What is artificial intelligence?",
+  "Explain quantum computing simply.",
+  "Write a haiku about programming."
+]
+```
+
+### Benchmark Output
+
+Results are saved in JSON format with timestamps:
+- `benchmark-2025-07-12-18.20.30.json` (auto-generated)
+- Custom filename with `--output` option
+
+The output includes detailed performance metrics, model comparisons, and summary statistics to help you choose the best model for your use case.
 
 ## Contributing
 
