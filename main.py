@@ -19,7 +19,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 *** 
 
-This module provides a comprehensive interface for interacting with Ollama language models, including model management, conversation handling, and service monitoring capabilities.
+This module provides a comprehensive interface for interacting with 
+Ollama language models, including model management, conversation 
+handling, and service monitoring capabilities.
 
 Classes:
     ModelManager: Handles loading, unloading, and state tracking of Ollama models
