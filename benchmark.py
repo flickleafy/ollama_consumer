@@ -22,6 +22,7 @@ import json
 import time
 import re
 import os
+import logging
 from datetime import datetime
 from main import (
     list_ollama_models,
@@ -45,6 +46,51 @@ DEFAULT_BENCHMARK_QUESTIONS = [
 ]
 
 
+def setup_logging(log_file=None, verbose=True):
+    """
+    Setup logging configuration for benchmark
+
+    Args:
+        log_file (str): Optional log file path. If None, creates timestamped log file
+        verbose (bool): Whether to also log to console
+
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    if log_file is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H.%M.%S")
+        log_file = f"benchmark-{timestamp}.log"
+
+    # Create logger
+    logger = logging.getLogger('benchmark')
+    logger.setLevel(logging.DEBUG)
+
+    # Clear any existing handlers
+    logger.handlers.clear()
+
+    # Create file handler
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    # Add console handler if verbose
+    if verbose:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_formatter = logging.Formatter('%(message)s')
+        console_handler.setFormatter(console_formatter)
+        logger.addHandler(console_handler)
+
+    return logger
+
+
 def clean_response(response):
     """Remove reasoning/thinking tags from model responses to store only the final answer"""
     if not response:
@@ -60,24 +106,27 @@ def clean_response(response):
     cleaned = re.sub(thinking_pattern2, '', cleaned,
                      flags=re.DOTALL | re.IGNORECASE)
 
-    # Clean up extra whitespace
-    cleaned = re.sub(r'\n\s*\n', '\n', cleaned.strip())
+    # Clean up extra whitespace and newlines
+    cleaned = re.sub(r'\n\s*\n+', '\n', cleaned.strip())
+    cleaned = re.sub(r'^\s+|\s+$', '', cleaned, flags=re.MULTILINE)
 
-    return cleaned
+    return cleaned.strip()
 
 
-def benchmark_model(model_name, questions, verbose=True):
+def benchmark_model(model_name, questions, logger, verbose=True):
     """
     Benchmark a single model with the given questions
 
     Args:
         model_name (str): Name of the model to benchmark
         questions (list): List of questions to ask
+        logger (logging.Logger): Logger instance for detailed logging
         verbose (bool): Whether to print progress information
 
     Returns:
         dict: Benchmark results for the model
     """
+    logger.info(f"Starting benchmark for model: {model_name}")
     if verbose:
         print(f"\n🔧 Benchmarking model: {model_name}")
 
@@ -93,19 +142,23 @@ def benchmark_model(model_name, questions, verbose=True):
 
     try:
         # Get model information
+        logger.debug("Getting model information...")
         if verbose:
             print("  📊 Getting model information...")
         model_info = get_model_info(model_name)
         if isinstance(model_info, dict):
             model_results["model_info"] = model_info
+            logger.debug(f"Model info retrieved: {model_info}")
 
         # Measure model loading time
+        logger.debug("Measuring model load time...")
         if verbose:
             print("  ⏱️  Measuring model load time...")
 
         # First, unload any currently loaded model
         current_model = model_manager.get_current_loaded_model()
         if current_model and current_model != model_name:
+            logger.debug(f"Unloading current model: {current_model}")
             model_manager.unload_model(current_model)
             time.sleep(1)  # Give it a moment to unload
 
@@ -117,11 +170,14 @@ def benchmark_model(model_name, questions, verbose=True):
         if not load_result['success']:
             error_msg = f"Failed to load model {model_name}: {load_result['message']}"
             model_results["errors"].append(error_msg)
+            logger.error(error_msg)
             if verbose:
                 print(f"  ❌ {error_msg}")
             return model_results
 
         model_results["load_time"] = round(load_end - load_start, 3)
+        logger.info(
+            f"Model loaded successfully in {model_results['load_time']:.3f} seconds")
         if verbose:
             print(
                 f"  ✅ Model loaded in {model_results['load_time']:.3f} seconds")
@@ -129,6 +185,8 @@ def benchmark_model(model_name, questions, verbose=True):
         # Benchmark each question
         total_inference_time = 0
         for i, question in enumerate(questions, 1):
+            logger.debug(
+                f"Processing question {i}/{len(questions)}: {question}")
             if verbose:
                 print(
                     f"  📝 Question {i}/{len(questions)}: {question[:50]}{'...' if len(question) > 50 else ''}")
@@ -150,27 +208,41 @@ def benchmark_model(model_name, questions, verbose=True):
                 question_result["inference_time"] = inference_time
                 total_inference_time += inference_time
 
-                # Clean the response (remove thinking tags)
-                if "Error" not in response:
-                    question_result["answer"] = clean_response(response)
-                    if verbose:
-                        print(f"     ⏱️  Answered in {inference_time:.3f}s")
-                else:
+                # Log the raw response for debugging
+                logger.debug(
+                    f"Raw response for question {i}: {response[:200]}{'...' if len(response) > 200 else ''}")
+
+                # Check for actual errors (HTTP errors, exceptions, etc.)
+                if response.startswith("Error: ") or response.startswith("Exception: "):
                     question_result["error"] = response
                     model_results["errors"].append(f"Question {i}: {response}")
+                    logger.warning(
+                        f"Error response for question {i}: {response}")
                     if verbose:
                         print(f"     ❌ Error: {response}")
+                else:
+                    # Clean the response (remove thinking tags) and store it
+                    cleaned_response = clean_response(response)
+                    question_result["answer"] = cleaned_response
+                    logger.debug(
+                        f"Cleaned response for question {i}: {cleaned_response[:100]}{'...' if len(cleaned_response) > 100 else ''}")
+                    if verbose:
+                        print(f"     ⏱️  Answered in {inference_time:.3f}s")
 
             except Exception as e:
                 error_msg = f"Exception during question {i}: {str(e)}"
                 question_result["error"] = error_msg
                 model_results["errors"].append(error_msg)
+                logger.error(error_msg)
                 if verbose:
                     print(f"     ❌ Exception: {str(e)}")
 
             model_results["questions_results"].append(question_result)
 
         model_results["total_inference_time"] = round(total_inference_time, 3)
+        logger.info(f"Total inference time: {total_inference_time:.3f}s")
+        logger.info(
+            f"Average per question: {total_inference_time/len(questions):.3f}s")
         if verbose:
             print(f"  📊 Total inference time: {total_inference_time:.3f}s")
             print(
@@ -179,24 +251,31 @@ def benchmark_model(model_name, questions, verbose=True):
     except Exception as e:
         error_msg = f"Critical error benchmarking {model_name}: {str(e)}"
         model_results["errors"].append(error_msg)
+        logger.error(error_msg)
         if verbose:
             print(f"  💥 Critical error: {str(e)}")
 
+    logger.info(f"Benchmark completed for model: {model_name}")
     return model_results
 
 
-def run_benchmark(questions=None, output_file=None, verbose=True):
+def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True):
     """
     Run benchmark on all available models
 
     Args:
         questions (list): List of questions to ask. Uses default if None.
         output_file (str): Output filename. Auto-generated if None.
+        log_file (str): Log filename. Auto-generated if None.
         verbose (bool): Whether to print progress information
 
     Returns:
         str: Path to the output file
     """
+    # Setup logging
+    logger = setup_logging(log_file, verbose)
+    logger.info("Starting Ollama Model Benchmark")
+
     # Use default questions if none provided
     if questions is None:
         questions = DEFAULT_BENCHMARK_QUESTIONS
@@ -206,33 +285,46 @@ def run_benchmark(questions=None, output_file=None, verbose=True):
         timestamp = datetime.now().strftime("%Y-%m-%d-%H.%M.%S")
         output_file = f"benchmark-{timestamp}.json"
 
+    logger.info(f"Output file: {output_file}")
+    logger.info(f"Questions to ask: {len(questions)}")
+
     if verbose:
         print("🚀 Starting Ollama Model Benchmark")
         print("=" * 50)
 
     # Check if Ollama is running
     if not model_manager.is_ollama_running():
-        print("❌ Ollama service is not running!")
+        error_msg = "Ollama service is not running!"
+        logger.error(error_msg)
+        print(f"❌ {error_msg}")
         print("Please start Ollama service before running benchmarks.")
         return None
 
     # Get list of available models
+    logger.debug("Getting list of available models...")
     if verbose:
         print("📋 Getting list of available models...")
 
     models = list_ollama_models()
     if not isinstance(models, list):
-        print(f"❌ Error getting models: {models}")
+        error_msg = f"Error getting models: {models}"
+        logger.error(error_msg)
+        print(f"❌ {error_msg}")
         return None
 
     if len(models) == 0:
-        print("❌ No models found! Please install some models first.")
+        error_msg = "No models found! Please install some models first."
+        logger.error(error_msg)
+        print(f"❌ {error_msg}")
         return None
 
     model_names = [model['name'] for model in models]
+    logger.info(f"Found {len(model_names)} models: {', '.join(model_names)}")
     if verbose:
         print(f"✅ Found {len(model_names)} models: {', '.join(model_names)}")
         print(f"📝 Will ask {len(questions)} questions to each model")
+        print(
+            f"📄 Detailed logs will be saved to: {logger.handlers[0].baseFilename if logger.handlers else 'benchmark.log'}")
         print()
 
     # Initialize benchmark results
@@ -241,7 +333,8 @@ def run_benchmark(questions=None, output_file=None, verbose=True):
             "timestamp": datetime.now().isoformat(),
             "total_models": len(model_names),
             "total_questions": len(questions),
-            "questions": questions
+            "questions": questions,
+            "log_file": logger.handlers[0].baseFilename if logger.handlers else None
         },
         "models_results": [],
         "summary": {}
@@ -252,15 +345,21 @@ def run_benchmark(questions=None, output_file=None, verbose=True):
     total_time_start = time.time()
 
     for i, model_name in enumerate(model_names, 1):
+        logger.info(
+            f"Starting benchmark {i}/{len(model_names)} for model: {model_name}")
         if verbose:
             print(f"\n[{i}/{len(model_names)}] Testing model: {model_name}")
             print("-" * 40)
 
-        model_result = benchmark_model(model_name, questions, verbose)
+        model_result = benchmark_model(model_name, questions, logger, verbose)
         benchmark_results["models_results"].append(model_result)
 
         if len(model_result["errors"]) == 0:
             successful_benchmarks += 1
+            logger.info(f"Model {model_name} benchmarked successfully")
+        else:
+            logger.warning(
+                f"Model {model_name} had {len(model_result['errors'])} errors")
 
         # Small delay between models to avoid potential issues
         if i < len(model_names):
@@ -268,6 +367,10 @@ def run_benchmark(questions=None, output_file=None, verbose=True):
 
     total_time_end = time.time()
     total_benchmark_time = round(total_time_end - total_time_start, 3)
+
+    logger.info(f"Total benchmark time: {total_benchmark_time:.3f} seconds")
+    logger.info(
+        f"Successful benchmarks: {successful_benchmarks}/{len(model_names)}")
 
     # Generate summary statistics
     summary = {
@@ -310,6 +413,9 @@ def run_benchmark(questions=None, output_file=None, verbose=True):
         summary["average_load_time"] = round(avg_load, 3)
         summary["average_inference_time"] = round(avg_inference, 3)
 
+        logger.info(
+            f"Performance summary - Fastest: {summary['fastest_model']['name']}, Slowest: {summary['slowest_model']['name']}")
+
     benchmark_results["summary"] = summary
 
     # Save results to JSON file
@@ -317,10 +423,14 @@ def run_benchmark(questions=None, output_file=None, verbose=True):
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(benchmark_results, f, indent=2, ensure_ascii=False)
 
+        logger.info(f"Results saved successfully to: {output_file}")
+
         if verbose:
             print("\n" + "=" * 50)
             print("🎉 Benchmark Complete!")
             print(f"📁 Results saved to: {output_file}")
+            print(
+                f"📄 Detailed logs saved to: {logger.handlers[0].baseFilename if logger.handlers else 'benchmark.log'}")
             print(f"⏱️  Total time: {total_benchmark_time:.3f} seconds")
             print(
                 f"✅ Successful models: {successful_benchmarks}/{len(model_names)}")
@@ -336,7 +446,9 @@ def run_benchmark(questions=None, output_file=None, verbose=True):
         return output_file
 
     except Exception as e:
-        print(f"❌ Error saving results: {str(e)}")
+        error_msg = f"Error saving results: {str(e)}"
+        logger.error(error_msg)
+        print(f"❌ {error_msg}")
         return None
 
 
@@ -345,7 +457,10 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Benchmark Ollama models")
-    parser.add_argument('--output', '-o', help="Output filename")
+    parser.add_argument(
+        '--output', '-o', help="Output filename for JSON results")
+    parser.add_argument('--log-file', '-l',
+                        help="Log filename for detailed logging")
     parser.add_argument('--quiet', '-q', action='store_true',
                         help="Quiet mode (less output)")
     parser.add_argument('--custom-questions', '-c',
@@ -373,6 +488,7 @@ def main():
     output_file = run_benchmark(
         questions=questions,
         output_file=args.output,
+        log_file=args.log_file,
         verbose=not args.quiet
     )
 
