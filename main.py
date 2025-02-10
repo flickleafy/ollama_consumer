@@ -1,3 +1,57 @@
+"""
+
+Olama Consumer - Interactive chat interface for Ollama models
+
+Copyright (C) 2025 flickleafy
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+*** 
+
+This module provides a comprehensive interface for interacting with Ollama language models, including model management, conversation handling, and service monitoring capabilities.
+
+Classes:
+    ModelManager: Handles loading, unloading, and state tracking of Ollama models
+
+Functions:
+    ask_ollama(prompt, model): Send a prompt to Ollama and get response
+    list_ollama_models(): List all locally available models from Ollama
+    get_current_loaded_model(): Get the currently loaded model from config
+    set_current_loaded_model(model_name): Set the currently loaded model in config
+    load_ollama_model(model): Load a model by sending a test prompt
+    unload_ollama_model(model): Unload a model from Ollama's memory via API
+    check_ollama_storage(): Check storage location by examining models directory size
+    get_model_info(model_name): Get detailed information about a specific model
+    select_model(previous_model): Display numbered list of models for user selection
+    color_text(text, color): Apply terminal color formatting to text
+    format_model_response(response): Format model response with colored thinking tags
+
+Features:
+- Interactive model selection and switching
+- Automatic service monitoring and restart capabilities
+- Error recovery for HTTP 500 responses
+- Configuration persistence using INI files
+- Colored terminal output for better user experience
+- Support for model thinking tags visualization
+
+The implementation uses the Ollama REST API (localhost:11434) for all model operations
+and maintains state through a configuration file. The main execution loop provides
+a continuous chat interface with command support for model switching and graceful exit.
+Ollama Consumer - Interactive chat interface for Ollama models
+
+"""
+
 import requests
 import json
 import configparser
@@ -8,6 +62,7 @@ import subprocess
 import time
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.ini')
+
 
 def ask_ollama(prompt, model="llama3"):
     """Send a prompt to Ollama and get response. Pure question/answer function."""
@@ -27,6 +82,7 @@ def ask_ollama(prompt, model="llama3"):
     except Exception as e:
         return f"Exception: {str(e)}"
 
+
 def list_ollama_models():
     """List all locally available models from Ollama"""
     try:
@@ -39,18 +95,20 @@ def list_ollama_models():
         return f"Connection error: {str(e)}"
 
 # Model Management Functions - Handle loading/unloading operations
+
+
 class ModelManager:
     """Manages Ollama model loading, unloading, and state tracking"""
-    
+
     def __init__(self, config_path):
         self.config_path = config_path
-    
+
     def get_current_loaded_model(self):
         """Get the currently loaded model from config"""
         config = configparser.ConfigParser()
         config.read(self.config_path)
         return config.get('ollama', 'current_loaded_model', fallback='')
-    
+
     def set_current_loaded_model(self, model_name):
         """Set the currently loaded model in config"""
         config = configparser.ConfigParser()
@@ -60,7 +118,7 @@ class ModelManager:
         config['ollama']['current_loaded_model'] = model_name or ''
         with open(self.config_path, 'w') as f:
             config.write(f)
-    
+
     def load_model(self, model):
         """Load a model by sending a test prompt"""
         try:
@@ -72,7 +130,7 @@ class ModelManager:
                 return {"success": False, "message": f"Failed to load model {model}: {response}"}
         except Exception as e:
             return {"success": False, "message": f"Exception loading model {model}: {str(e)}"}
-    
+
     def unload_model(self, model):
         """Unload a model from Ollama's memory via API"""
         try:
@@ -91,7 +149,7 @@ class ModelManager:
                 return {"success": False, "message": f"HTTP {response.status_code}"}
         except Exception as e:
             return {"success": False, "message": str(e)}
-    
+
     def unload_all_models(self):
         """Attempt to unload all known models"""
         models = list_ollama_models()
@@ -101,28 +159,30 @@ class ModelManager:
                 result = self.unload_model(model_name)
                 print(f"Unload {model_name}: {result['message']}")
         self.set_current_loaded_model('')
-    
+
     def is_ollama_running(self):
         """Check if Ollama service is running"""
         try:
-            response = requests.get('http://localhost:11434/api/version', timeout=5)
+            response = requests.get(
+                'http://localhost:11434/api/version', timeout=5)
             return response.status_code == 200
         except Exception:
             return False
-    
+
     def restart_ollama_service(self):
         """Attempt to restart the Ollama service automatically"""
         print("Attempting to restart Ollama service...")
-        
+
         # First, check if we can find ollama process
         try:
             # Check if ollama is running as a process
-            ps_result = subprocess.run(["pgrep", "-f", "ollama"], capture_output=True, text=True)
+            ps_result = subprocess.run(
+                ["pgrep", "-f", "ollama"], capture_output=True, text=True)
             if ps_result.returncode == 0:
                 print("Found running Ollama processes, attempting graceful restart...")
         except Exception:
             pass
-        
+
         # Common service restart commands to try
         restart_commands = [
             # systemd service restart
@@ -131,7 +191,7 @@ class ModelManager:
             # pkill and restart (if installed as binary)
             ["pkill", "-f", "ollama", "&&", "ollama", "serve"],
         ]
-        
+
         for cmd in restart_commands:
             try:
                 print(f"Trying: {' '.join(cmd)}")
@@ -141,17 +201,19 @@ class ModelManager:
                     start_cmd = cmd[cmd.index("&&") + 1:]
                     subprocess.run(kill_cmd, timeout=10, capture_output=True)
                     time.sleep(2)
-                    subprocess.Popen(start_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.Popen(
+                        start_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     time.sleep(3)
                 else:
-                    subprocess.run(cmd, timeout=10, capture_output=True, text=True)
+                    subprocess.run(cmd, timeout=10,
+                                   capture_output=True, text=True)
                     time.sleep(3)
-                
+
                 # Check if service is now running
                 if self.is_ollama_running():
                     print("✓ Ollama service restarted successfully!")
                     return True
-                    
+
             except subprocess.TimeoutExpired:
                 print(f"Timeout running: {' '.join(cmd)}")
                 continue
@@ -161,9 +223,9 @@ class ModelManager:
             except Exception as e:
                 print(f"Error: {e}")
                 continue
-        
+
         return False
-    
+
     def provide_manual_restart_instructions(self):
         """Provide user with manual restart instructions if automatic restart fails"""
         print("\n" + "="*60)
@@ -174,48 +236,48 @@ class ModelManager:
         print("   sudo systemctl restart ollama")
         print("   # OR")
         print("   systemctl --user restart ollama")
-        
+
         print("\n2. If Ollama is installed as a binary:")
         print("   pkill -f ollama")
         print("   ollama serve")
-        
+
         print("\n3. If using Docker:")
         print("   docker restart ollama")
         print("   # OR")
         print("   docker-compose restart ollama")
-        
+
         print("\n4. Alternative approach:")
         print("   killall ollama")
         print("   nohup ollama serve > /dev/null 2>&1 &")
-        
+
         print("\nAfter restarting, press Enter to continue or 'q' to quit...")
         user_input = input().strip().lower()
         return user_input != 'q'
-    
+
     def handle_error_500(self, attempted_model):
         """Handle error 500 by attempting to unload conflicting model and restart service if needed"""
         current_model = self.get_current_loaded_model()
         print("Error 500 detected. Attempting recovery...")
-        
+
         # Try to unload the current model from config first
         if current_model:
             print(f"Trying to unload configured model: {current_model}")
             result = self.unload_model(current_model)
             print(f"Unload result: {result['message']}")
-        
+
         # If still having issues, try unloading the attempted model
         print(f"Trying to unload attempted model: {attempted_model}")
         result = self.unload_model(attempted_model)
         print(f"Unload result: {result['message']}")
-        
+
         # As last resort, try to unload all models
         print("As last resort, trying to unload all models...")
         self.unload_all_models()
-        
+
         # Check if Ollama is still responsive
         if not self.is_ollama_running():
             print("Ollama service appears to be down. Attempting automatic restart...")
-            
+
             if self.restart_ollama_service():
                 return {"success": True, "message": "Service restarted successfully"}
             else:
@@ -229,44 +291,51 @@ class ModelManager:
                         return {"success": False, "message": "Service still not responding"}
                 else:
                     return {"success": False, "message": "User chose to quit"}
-        
+
         return {"success": True, "message": "Recovery attempted - cleared all models"}
-    
+
     def restart_service(self):
         """Restart the Ollama service"""
         try:
             # Attempt to stop the service
             print("Stopping Ollama service...")
             subprocess.run(["ollama", "stop"], check=True)
-            
+
             # Wait for a few seconds to ensure it stops completely
             time.sleep(3)
-            
+
             # Attempt to start the service
             print("Starting Ollama service...")
             subprocess.run(["ollama", "start"], check=True)
-            
+
             print("Ollama service restarted successfully.")
         except subprocess.CalledProcessError as e:
             print(f"Error restarting Ollama service: {e}")
         except Exception as e:
             print(f"Unexpected error: {e}")
 
+
 # Create global model manager instance
 model_manager = ModelManager(CONFIG_PATH)
 
 # Convenience functions for backward compatibility
+
+
 def get_current_loaded_model():
     return model_manager.get_current_loaded_model()
+
 
 def set_current_loaded_model(model_name):
     model_manager.set_current_loaded_model(model_name)
 
+
 def load_ollama_model(model):
     return model_manager.load_model(model)
 
+
 def unload_ollama_model(model):
     return model_manager.unload_model(model)
+
 
 def check_ollama_storage():
     """Check storage location by examining models directory size"""
@@ -282,6 +351,7 @@ def check_ollama_storage():
             return {"status": "Error listing models", "error": models}
     except Exception as e:
         return {"status": "Error", "error": str(e)}
+
 
 def get_model_info(model_name="llama3"):
     """Get detailed information about a specific model"""
@@ -305,63 +375,69 @@ def get_model_info(model_name="llama3"):
     except Exception as e:
         return f"Error: {str(e)}"
 
+
 def select_model(previous_model=None):
     """Display a numbered list of models and ask user to choose one. Handle model switching."""
     models = list_ollama_models()
     if not isinstance(models, list):
         print(f"Error retrieving models: {models}")
         return previous_model or "llama3"  # Default model if error
-    
+
     print("\nAvailable Models:")
     for i, model in enumerate(models, 1):
-        parameter_size = model.get('details', {}).get('parameter_size', 'Unknown')
+        parameter_size = model.get('details', {}).get(
+            'parameter_size', 'Unknown')
         print(f"{i}. {model['name']} - Parameters: {parameter_size}")
-    
+
     while True:
         try:
             choice = int(input("\nSelect a model by number: "))
             if 1 <= choice <= len(models):
                 selected = models[choice-1]['name']
-                
+
                 # Handle model switching
                 if previous_model and selected != previous_model:
                     print(f"Unloading previous model: {previous_model}")
                     result = model_manager.unload_model(previous_model)
                     print(f"Unload result: {result['message']}")
-                
+
                 # Load the selected model
                 print(f"Loading model: {selected} ...")
                 load_result = model_manager.load_model(selected)
-                
+
                 if load_result['success']:
                     print(f"Model {selected} loaded successfully.")
                     return selected
                 else:
                     print(f"Failed to load model: {load_result['message']}")
-                    
+
                     # Handle error 500 case with recovery and potential restart
                     if "Error: 500" in load_result['message']:
                         print("Attempting automatic recovery...")
-                        recovery_result = model_manager.handle_error_500(selected)
-                        
+                        recovery_result = model_manager.handle_error_500(
+                            selected)
+
                         if recovery_result['success']:
                             # Try loading again after recovery
                             print(f"Retrying load of {selected}...")
                             retry_result = model_manager.load_model(selected)
-                            
+
                             if retry_result['success']:
-                                print(f"Model {selected} loaded successfully after recovery.")
+                                print(
+                                    f"Model {selected} loaded successfully after recovery.")
                                 return selected
                             else:
-                                print("Recovery failed. Please try a different model.")
+                                print(
+                                    "Recovery failed. Please try a different model.")
                                 print(f"Error: {retry_result['message']}")
                         else:
                             print("Recovery and restart attempts failed.")
                             if "User chose to quit" in recovery_result['message']:
                                 return previous_model or "llama3"
-                    
+
                     # Ask user if they want to try another model
-                    retry = input("Would you like to try another model? (y/n): ").lower()
+                    retry = input(
+                        "Would you like to try another model? (y/n): ").lower()
                     if retry != 'y':
                         return previous_model or "llama3"
                     continue
@@ -373,6 +449,7 @@ def select_model(previous_model=None):
             print("\nSelection cancelled.")
             return previous_model or "llama3"
 
+
 def color_text(text, color):
     colors = {
         'green': '\033[92m',
@@ -382,14 +459,16 @@ def color_text(text, color):
     }
     return f"{colors.get(color, '')}{text}{colors['reset']}"
 
+
 def format_model_response(response):
     """Format model response with colored thinking tags"""
     # Pattern to match <think>...</think> or <thinking>...</thinking> tags
     thinking_pattern = r'(<think>.*?</think>|<thinking>.*?</thinking>)'
-    
+
     # Split the response by thinking tags
-    parts = re.split(thinking_pattern, response, flags=re.DOTALL | re.IGNORECASE)
-    
+    parts = re.split(thinking_pattern, response,
+                     flags=re.DOTALL | re.IGNORECASE)
+
     formatted_response = ""
     for part in parts:
         # Check if this part is a thinking tag
@@ -399,17 +478,18 @@ def format_model_response(response):
         else:
             # Keep regular response text yellow
             formatted_response += color_text(part, 'yellow')
-    
+
     return formatted_response
+
 
 if __name__ == "__main__":
     print("\nOllama Chat Interface:")
-    
+
     # Check if Ollama service is running before starting
     if not model_manager.is_ollama_running():
         print("⚠️  Ollama service is not running!")
         print("Attempting to start Ollama service...")
-        
+
         if model_manager.restart_ollama_service():
             print("✓ Ollama service started successfully!")
         else:
@@ -417,18 +497,19 @@ if __name__ == "__main__":
             if not model_manager.provide_manual_restart_instructions():
                 print("Exiting...")
                 sys.exit(1)
-            
+
             # Final check after manual intervention
             if not model_manager.is_ollama_running():
                 print("❌ Ollama service is still not running. Exiting...")
                 sys.exit(1)
             else:
                 print("✓ Ollama service is now running!")
-    
+
     selected_model = select_model()
     print(f"Using model: {selected_model}")
     while True:
-        print(color_text("Enter your prompt (or 'exit' to quit, 's' to select new model):", 'green'))
+        print(color_text(
+            "Enter your prompt (or 'exit' to quit, 's' to select new model):", 'green'))
         prompt = input("> ")
         if prompt.lower() in ['exit', 'quit', 'q']:
             break
