@@ -11,6 +11,9 @@ A Python-based interactive chat interface for Ollama models with advanced model 
 - 🎨 **Formatted Responses**: Color-coded output with special handling for thinking tags
 - ⚙️ **Configuration Management**: Persistent configuration using INI files
 - 🔧 **Service Monitoring**: Automatic Ollama service health checks and recovery
+- 📊 **Comprehensive Benchmarking**: Advanced model performance evaluation with MoE support
+- 🎮 **Interactive Benchmark Mode**: User-friendly guided benchmark configuration
+- 📁 **Organized Results**: Category-based file output for better data management
 
 ## Requirements
 
@@ -106,7 +109,7 @@ python test_ollama.py
 
 ## Benchmarking
 
-The project includes a comprehensive benchmarking tool to evaluate model performance:
+The project includes a comprehensive benchmarking tool to evaluate model performance with advanced features for testing all types of models, including Mixture of Experts (MoE) models.
 
 ### Quick Benchmark
 
@@ -116,34 +119,75 @@ Run a benchmark with default questions on all available models:
 python benchmark.py
 ```
 
+### Interactive Mode
+
+Launch the interactive benchmark configuration:
+
+```bash
+python benchmark.py --interactive
+# or simply
+python benchmark.py
+```
+
+The interactive mode provides a guided setup with options for:
+
+- Model selection (all, by category, or manual selection)
+- Custom questions from files
+- Output and logging configuration
+- Category filtering
+
 ### Advanced Benchmarking Options
 
 ```bash
 # Quiet mode (less output)
 python benchmark.py --quiet
 
-# Custom output filename
-python benchmark.py --output my_benchmark_results.json
+# Custom base filename (creates multiple category files)
+python benchmark.py --output my_benchmark
+
+# Filter by model size category
+python benchmark.py --category small
+python benchmark.py --category medium
+python benchmark.py --category large
 
 # Use custom questions from a JSON file
 python benchmark.py --custom-questions sample_questions.json
 
+# Show available model categories
+python benchmark.py --list-categories
+
 # Combine options
-python benchmark.py --output benchmark_2025_01_15.json --custom-questions my_questions.json --quiet
+python benchmark.py --output benchmark_2025_01_15 --category medium --quiet
 ```
 
 ### Benchmark Features
 
-- **Automatic Model Discovery**: Tests all locally available models
-- **Load Time Measurement**: Records how long each model takes to load
-- **Inference Time Tracking**: Measures response time for each question
-- **Response Cleaning**: Removes thinking tags to store only final answers
-- **Comprehensive Results**: Saves detailed JSON reports with:
-  - Model information and metadata
-  - Load times and inference times
-  - Questions and cleaned responses
-  - Error tracking and summary statistics
-  - Performance comparisons
+- **🤖 Advanced Model Support**: Full support for Mixture of Experts (MoE) models with accurate parameter estimation
+- **📊 Model Categorization**: Automatic categorization by size (Small ≤16B, Medium 16B-100B, Large >100B)
+- **🎯 Smart Parameter Detection**: API-driven parameter extraction with pattern-based fallback
+- **📁 Organized Output**: Separate files for each category to avoid large monolithic files
+- **⚡ Load Time Measurement**: Records how long each model takes to load
+- **🕐 Inference Time Tracking**: Measures response time for each question
+- **🧹 Response Cleaning**: Removes thinking tags to store only final answers
+- **🛡️ Robust Error Handling**: Graceful handling of keyboard interrupts and model errors
+- **📈 Comprehensive Analytics**: Detailed performance statistics and comparisons
+
+### Model Categories
+
+The benchmark automatically categorizes models:
+
+- **Small Models**: ≤16B parameters (e.g., Llama 3.2 3B, Gemma 2 9B)
+- **Medium Models**: 16B-100B parameters (e.g., Llama 3.1 70B)
+- **Large Models**: >100B parameters (e.g., Llama 4 405B, MoE models like 128x17B)
+- **Unknown**: Models with undetectable parameter counts
+
+### MoE Model Support
+
+The benchmark includes sophisticated support for Mixture of Experts models:
+
+- **Conservative Parameter Estimation**: Uses realistic scaling factors instead of linear multiplication
+- **Pattern Recognition**: Detects MoE patterns like.
+- **API Integration**: Prioritizes official API parameter data when available
 
 ### Custom Questions
 
@@ -153,17 +197,37 @@ Create a JSON file with your own questions:
 [
   "What is artificial intelligence?",
   "Explain quantum computing simply.",
-  "Write a haiku about programming."
+  "Write a haiku about programming.",
+  "Solve this problem: What is 15 × 23?",
+  "Name three advantages of renewable energy."
 ]
 ```
 
 ### Benchmark Output
 
-Results are saved in JSON format with timestamps:
-- `benchmark-2025-07-12-18.20.30.json` (auto-generated)
-- Custom filename with `--output` option
+Results are saved as separate JSON files for better organization:
 
-The output includes detailed performance metrics, model comparisons, and summary statistics to help you choose the best model for your use case.
+```text
+benchmark_2025-01-15-14.30.15_summary.json  # Overall results and statistics
+benchmark_2025-01-15-14.30.15_small.json    # Small models detailed results
+benchmark_2025-01-15-14.30.15_medium.json   # Medium models detailed results
+benchmark_2025-01-15-14.30.15_large.json    # Large models detailed results
+benchmark_2025-01-15-14.30.15_unknown.json  # Unknown size models results
+```
+
+#### File Structure
+
+- **Summary File**: Contains overall benchmark info, category summaries, and performance statistics
+- **Category Files**: Detailed results for each model size category with individual model performance data
+
+#### Benefits of Separate Files
+
+- ✅ **Manageable File Sizes**: Avoid large monolithic files
+- ✅ **Category-Specific Analysis**: Easy to analyze specific model types
+- ✅ **Faster Loading**: Load only the data you need
+- ✅ **Better Organization**: Clear separation by model characteristics
+
+The output includes detailed performance metrics, model comparisons, category statistics, and summary analytics to help you choose the best model for your use case.
 
 ## Contributing
 
@@ -224,7 +288,23 @@ If you encounter any issues or have questions:
 
 ## Changelog
 
-### v1.0.0 (Current)
+### v1.1.0 (Current)
+
+**Enhanced Benchmarking System:**
+
+- 🧠 **MoE Model Support**: Full support for Mixture of Experts models with accurate parameter estimation
+- 📊 **Model Categorization**: Automatic categorization by size (Small/Medium/Large/Unknown)
+- 📁 **Organized Output**: Separate JSON files for each category to avoid large monolithic files
+- 🎮 **Interactive Mode**: Guided benchmark configuration with user-friendly options
+- 🎯 **Category Filtering**: Benchmark specific model size categories
+- 🛡️ **Enhanced Error Handling**: Graceful keyboard interrupt handling and robust error recovery
+- 🚀 **Performance Improvements**: Optimized parameter detection and response processing
+
+**Code Quality Improvements:**
+
+- 📖 **Better Documentation**: Comprehensive help text and usage examples
+
+### v1.0.0
 
 - Initial release with basic chat functionality
 - Model management and switching capabilities
