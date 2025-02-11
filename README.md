@@ -14,6 +14,7 @@ A Python-based interactive chat interface for Ollama models with advanced model 
 - 📊 **Comprehensive Benchmarking**: Advanced model performance evaluation with MoE support
 - 🎮 **Interactive Benchmark Mode**: User-friendly guided benchmark configuration
 - 📁 **Organized Results**: Category-based file output for better data management
+- 🎯 **GPU Optimization**: Multi-GPU configuration tools for optimal performance
 
 ## Requirements
 
@@ -78,11 +79,12 @@ The `config.ini` file stores:
 
 ## Project Structure
 
-```
+```text
 ollama_consumer/
 ├── main.py                # Main application with chat interface
 ├── test_ollama.py         # Test utilities and functions
 ├── benchmark.py           # Model benchmarking script
+├── check_gpu_config.py    # GPU configuration checker and optimizer
 ├── sample_questions.json  # Sample benchmark questions
 ├── config.ini             # Configuration file (created from example)
 ├── config.ini.example     # Example configuration
@@ -106,6 +108,146 @@ Run the test suite:
 ```bash
 python test_ollama.py
 ```
+
+## GPU Optimization
+
+For users with multiple GPUs, this project includes tools and guidance to optimize Ollama's GPU usage for maximum performance.
+
+### GPU Configuration Tool
+
+Use the included GPU configuration checker to analyze your setup and get optimization recommendations:
+
+```bash
+python check_gpu_config.py
+```
+
+This tool will:
+
+- **Detect all NVIDIA GPUs** and their capabilities
+- **Show current GPU utilization** and memory usage
+- **Recommend optimal environment variables** for your setup
+- **Display GPU priority order** for best performance
+
+### Multi-GPU Optimization Strategy
+
+The goal is to **prioritize the most capable GPU** while using weaker GPUs only when necessary for model splitting:
+
+#### **Automatic GPU Detection and Recommendations**
+
+The `check_gpu_config.py` script analyzes your GPUs by:
+
+- Memory capacity (primary factor)
+- Current utilization
+- Temperature and power consumption
+- Available memory
+
+#### **Environment Variables for Optimal Performance**
+
+Based on your GPU configuration, set these environment variables:
+
+```bash
+# Example for dual GPU config (primary 16Gb) + (secondary 8Gb)
+# Force Ollama to prioritize GPU 0 first
+export CUDA_VISIBLE_DEVICES=0,1
+
+# Use 90% of GPU memory (reserve 10% for system)
+export OLLAMA_GPU_MEMORY_FRACTION=0.9
+
+# Limit to one model at a time for optimal GPU usage
+export OLLAMA_MAX_LOADED_MODELS=1
+
+# Optional: Force all layers to GPU when possible
+export OLLAMA_GPU_LAYERS=-1
+```
+
+#### **Configuration Behavior**
+
+With proper configuration:
+
+- ✅ **Single-GPU Models**: Always load on the most capable GPU
+- ✅ **Large Models**: Automatically split across GPUs when needed
+- ✅ **Memory Optimization**: Reserve 10% GPU memory for system operations
+- ✅ **Performance Priority**: Weaker GPUs used only when primary GPU can't handle the entire model
+
+### Manual GPU Configuration
+
+If you prefer manual configuration:
+
+#### **Step 1: Identify Your GPUs**
+
+```bash
+nvidia-smi --query-gpu=index,name,memory.total --format=csv
+```
+
+#### **Step 2: Set GPU Priority**
+
+Order GPUs by capability in `CUDA_VISIBLE_DEVICES`:
+
+```bash
+# Most capable GPU first, weaker GPUs after
+export CUDA_VISIBLE_DEVICES=0,1,2  # Adjust indices based on your setup
+```
+
+#### **Step 3: Configure Memory Usage**
+
+```bash
+# Reserve memory for system operations
+export OLLAMA_GPU_MEMORY_FRACTION=0.9
+
+# Limit concurrent models for optimal performance
+export OLLAMA_MAX_LOADED_MODELS=1
+```
+
+#### **Step 4: Apply Configuration**
+
+Add to your shell profile (`.bashrc` or `.zshrc`):
+
+```bash
+echo 'export CUDA_VISIBLE_DEVICES=0,1
+export OLLAMA_GPU_MEMORY_FRACTION=0.9
+export OLLAMA_MAX_LOADED_MODELS=1
+export OLLAMA_GPU_LAYERS=-1' >> ~/.zshrc
+
+source ~/.zshrc
+```
+
+#### **Step 5: Restart Ollama**
+
+```bash
+# Stop Ollama service
+pkill ollama
+
+# Start with new configuration
+ollama serve
+```
+
+### GPU Optimization Benefits
+
+Proper GPU configuration provides:
+
+- 🚀 **Faster Model Loading**: Models load on the most capable GPU first
+- 💾 **Efficient Memory Usage**: Optimal memory allocation across GPUs
+- ⚡ **Better Performance**: Reduced inference times for most workloads
+- 🔄 **Smart Fallback**: Automatic model splitting only when necessary
+- 🎯 **Resource Optimization**: Weaker GPUs reserved for overflow scenarios
+
+### Troubleshooting GPU Issues
+
+**Model Loading Slowly:**
+
+- Check if the model is being split unnecessarily
+- Verify `CUDA_VISIBLE_DEVICES` order prioritizes your best GPU
+
+**GPU Memory Errors:**
+
+- Reduce `OLLAMA_GPU_MEMORY_FRACTION` to 0.8 or 0.7
+- Ensure no other GPU-intensive processes are running
+
+**Models Loading on Wrong GPU:**
+
+- Verify environment variables are set correctly
+- Restart Ollama service after configuration changes
+- Check GPU memory availability with `nvidia-smi`
 
 ## Benchmarking
 

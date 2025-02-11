@@ -261,15 +261,31 @@ def clean_response(response):
     if not response:
         return response
 
-    # Remove <think>...</think> or <thinking>...</thinking> tags and their content
-    thinking_pattern = r'<think[^>]*>.*?</think[^>]*>'
-    cleaned = re.sub(thinking_pattern, '', response,
+    # Remove complete <think>...</think> or <thinking>...</thinking> tags and their content
+    thinking_pattern1 = r'<think[^>]*>.*?</think[^>]*>'
+    cleaned = re.sub(thinking_pattern1, '', response,
                      flags=re.DOTALL | re.IGNORECASE)
 
     # Also remove any standalone thinking patterns
     thinking_pattern2 = r'<thinking>.*?</thinking>'
     cleaned = re.sub(thinking_pattern2, '', cleaned,
                      flags=re.DOTALL | re.IGNORECASE)
+
+    # Remove unclosed thinking tags (opening tags without proper closing)
+    # This handles cases where <think> appears but doesn't have a proper closing tag
+    thinking_pattern3 = r'<think[^>]*>.*'
+    cleaned = re.sub(thinking_pattern3, '', cleaned,
+                     flags=re.DOTALL | re.IGNORECASE)
+
+    # Remove any remaining standalone thinking tags
+    thinking_pattern4 = r'</?think[^>]*>'
+    cleaned = re.sub(thinking_pattern4, '', cleaned,
+                     flags=re.IGNORECASE)
+
+    # Remove any remaining standalone thinking tags
+    thinking_pattern5 = r'</?thinking[^>]*>'
+    cleaned = re.sub(thinking_pattern5, '', cleaned,
+                     flags=re.IGNORECASE)
 
     # Clean up extra whitespace and newlines
     cleaned = re.sub(r'\n\s*\n+', '\n', cleaned.strip())
