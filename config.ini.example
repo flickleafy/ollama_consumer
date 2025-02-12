@@ -2,3 +2,11 @@
 current_loaded_model = phi4-reasoning:latest
 system_prompt = You are a helpful AI assistant. Please provide clear, accurate, and concise responses in plain english language.
 
+[blacklist]
+# Models to exclude from benchmarking (JSON array format)
+# Examples:
+# models = ["model1", "model2"]
+# models = model1, model2, model3
+# models = model1
+models = []
+

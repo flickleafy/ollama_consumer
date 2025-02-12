@@ -12,6 +12,7 @@ A Python-based interactive chat interface for Ollama models with advanced model 
 - ⚙️ **Configuration Management**: Persistent configuration using INI files
 - 🔧 **Service Monitoring**: Automatic Ollama service health checks and recovery
 - 📊 **Comprehensive Benchmarking**: Advanced model performance evaluation with MoE support
+- 🚫 **Model Blacklisting**: Exclude problematic models from benchmarking via configuration
 - 🎮 **Interactive Benchmark Mode**: User-friendly guided benchmark configuration
 - 📁 **Organized Results**: Category-based file output for better data management
 - 🎯 **GPU Optimization**: Multi-GPU configuration tools for optimal performance
@@ -77,6 +78,7 @@ The `config.ini` file stores:
 - Service configuration settings
 - User preferences
 - **System prompt**: Optional instruction that defines how the model should behave
+- **Model blacklist**: Models to exclude from benchmarking
 
 #### Setting a System Prompt
 
@@ -87,6 +89,32 @@ To set a system prompt that will be applied to all conversations, edit your `con
 current_loaded_model = llama3.2:latest
 system_prompt = You are a helpful AI assistant. Please provide clear, accurate, and concise responses.
 ```
+
+#### Blacklisting Models
+
+To exclude problematic models from benchmarking, add them to the blacklist section in your `config.ini` file:
+
+```ini
+[blacklist]
+# Models to exclude from benchmarking (JSON array format)
+models = ["model1:latest", "problematic_model:tag"]
+
+# Alternative formats also supported:
+# models = model1:latest, model2:tag, model3:latest
+# models = single_model:latest
+```
+
+Blacklisted models will be automatically filtered out from:
+
+- All benchmark operations
+- Interactive model selection
+- Category-based filtering
+
+This is useful for excluding models that:
+
+- Are known to fail during benchmarking
+- Cause system instability
+- Take excessively long to load or respond
 
 The system prompt will be automatically applied to all conversations with any model. Examples of useful system prompts:
 
@@ -459,7 +487,8 @@ If you encounter any issues or have questions:
 - 📁 **Organized Output**: Separate JSON files for each category to avoid large monolithic files
 - 🎮 **Interactive Mode**: Guided benchmark configuration with user-friendly options
 - 🎯 **Category Filtering**: Benchmark specific model size categories
-- 🛡️ **Enhanced Error Handling**: Graceful keyboard interrupt handling and robust error recovery
+- � **Model Blacklisting**: Exclude problematic models from benchmarking via configuration
+- �🛡️ **Enhanced Error Handling**: Graceful keyboard interrupt handling and robust error recovery
 - 🚀 **Performance Improvements**: Optimized parameter detection and response processing
 
 **Code Quality Improvements:**

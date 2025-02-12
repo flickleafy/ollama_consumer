@@ -23,6 +23,7 @@ import time
 import re
 import os
 import logging
+import configparser
 from datetime import datetime
 from main import (
     list_ollama_models,
@@ -52,6 +53,69 @@ MODEL_SIZE_CATEGORIES = {
     "medium": {"min": 16, "max": 100, "description": "Medium models (16B-100B parameters)"},
     "large": {"min": 100, "max": float('inf'), "description": "Large models (>100B parameters)"}
 }
+
+
+def get_blacklisted_models():
+    """
+    Get list of blacklisted models from config.ini
+
+    Returns:
+        list: List of blacklisted model names, or empty list if none/error
+    """
+    try:
+        config = configparser.ConfigParser()
+
+        # Check if config file exists
+        config_path = 'config.ini'
+        if not os.path.exists(config_path):
+            return []
+
+        config.read(config_path)
+
+        # Get blacklisted models from the [blacklist] section
+        if config.has_section('blacklist') and config.has_option('blacklist', 'models'):
+            blacklist_str = config.get('blacklist', 'models')
+
+            # Parse the list - handle different formats:
+            # - JSON array: ["model1", "model2"]
+            # - Comma-separated: model1, model2, model3
+            # - Newline-separated: model1\nmodel2\nmodel3
+
+            blacklist_str = blacklist_str.strip()
+            if not blacklist_str:
+                return []
+
+            # Try parsing as JSON array first
+            try:
+                import json
+                blacklisted_models = json.loads(blacklist_str)
+                if isinstance(blacklisted_models, list):
+                    return [str(model).strip() for model in blacklisted_models if model]
+            except (ValueError, json.JSONDecodeError):
+                pass
+
+            # Fall back to comma or newline separated
+            if ',' in blacklist_str:
+                # Comma-separated
+                blacklisted_models = [model.strip().strip('"\'')
+                                      for model in blacklist_str.split(',')]
+            else:
+                # Newline-separated or single model
+                blacklisted_models = [model.strip().strip('"\'')
+                                      for model in blacklist_str.split('\n')]
+
+            # Filter out empty strings
+            return [model for model in blacklisted_models if model]
+
+        return []
+
+    except Exception as e:
+        # Log error but don't fail the benchmark
+        logger = logging.getLogger('benchmark')
+        if logger.handlers:  # Only log if logger is configured
+            logger.warning(
+                f"Error reading blacklisted models from config: {e}")
+        return []
 
 
 def estimate_moe_parameters(experts, expert_size):
@@ -110,51 +174,82 @@ def categorize_model_by_size(model_info):
     Returns:
         str: Category name ('small', 'medium', 'large', or 'unknown')
     """
+    # Get logger instance
+    logger = logging.getLogger('benchmark')
+
     if not isinstance(model_info, dict):
+        logger.debug(
+            f"categorize_model_by_size received non-dict: {type(model_info)} = {model_info}")
         return "unknown"
+
+    logger.debug(f"Categorizing model: {model_info}")
 
     # Try to extract parameter count from various fields
     param_count = None
 
     # Check for parameter count in different possible fields
     for field in ['parameter_size', 'parameters', 'param_count', 'size', 'details']:
-        if field in model_info:
-            value = model_info[field]
-            if isinstance(value, str):
-                # Extract number from string like "7B", "13B", "401.6B", etc.
-                match = re.search(r'(\d+(?:\.\d+)?)\s*[BbMmKkTt]?', value)
-                if match:
-                    num = float(match.group(1))
-                    # Convert to billions based on suffix
-                    param_count = convert_to_billions(num, value)
+        if isinstance(model_info, dict) and field in model_info:
+            try:
+                value = model_info[field]
+                if isinstance(value, str):
+                    # Extract number from string like "7B", "13B", "401.6B", etc.
+                    match = re.search(r'(\d+(?:\.\d+)?)\s*[BbMmKkTt]?', value)
+                    if match:
+                        num = float(match.group(1))
+                        # Convert to billions based on suffix
+                        param_count = convert_to_billions(num, value)
+                        break
+                elif isinstance(value, (int, float)):
+                    param_count = value
                     break
-            elif isinstance(value, (int, float)):
-                param_count = value
-                break
+            except Exception as e:
+                logger.warning(
+                    f"Error processing field '{field}' in model_info: {e}")
+                continue
 
     # Also try to extract from model name if not found in info
-    if param_count is None and 'name' in model_info:
-        model_name = model_info['name']
+    if param_count is None and isinstance(model_info, dict) and 'name' in model_info:
+        try:
+            model_name = model_info['name']
 
-        # Check for general MoE patterns (e.g., number of experts x size per expert)
-        moe_match = re.search(r'(\d+)x(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
-        if moe_match:
-            experts = int(moe_match.group(1))
-            expert_size = float(moe_match.group(2))
-            param_count = estimate_moe_parameters(experts, expert_size)
-        else:
-            # Look for regular patterns like "7b", "13b", "70b" in model name
-            match = re.search(r'(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
-            if match:
-                num = float(match.group(1))
-                param_count = convert_to_billions(num, match.group(0))
+            # Ensure model_name is a string
+            if not isinstance(model_name, str):
+                logger.warning(
+                    f"Model name is not a string: {type(model_name)} = {model_name}")
+                return "unknown"
+
+            # Check for general MoE patterns (e.g., number of experts x size per expert)
+            moe_match = re.search(
+                r'(\d+)x(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
+            if moe_match:
+                experts = int(moe_match.group(1))
+                expert_size = float(moe_match.group(2))
+                param_count = estimate_moe_parameters(experts, expert_size)
+            else:
+                # Look for regular patterns like "7b", "13b", "70b" in model name
+                match = re.search(r'(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
+                if match:
+                    num = float(match.group(1))
+                    param_count = convert_to_billions(num, match.group(0))
+        except Exception as e:
+            logger.warning(f"Error extracting parameters from model name: {e}")
+            return "unknown"
 
     # Categorize based on parameter count
     if param_count is not None:
-        for category, limits in MODEL_SIZE_CATEGORIES.items():
-            if limits["min"] <= param_count < limits["max"]:
-                return category
+        try:
+            for category, limits in MODEL_SIZE_CATEGORIES.items():
+                if limits["min"] <= param_count < limits["max"]:
+                    logger.debug(
+                        f"Model categorized as '{category}' with {param_count}B parameters")
+                    return category
+        except Exception as e:
+            logger.warning(
+                f"Error categorizing model with param_count {param_count}: {e}")
 
+    logger.debug(
+        f"Model categorized as 'unknown' (param_count: {param_count})")
     return "unknown"
 
 
@@ -168,48 +263,73 @@ def get_model_category_info(model_info):
     Returns:
         dict: Category information including name, description, and estimated params
     """
-    category = categorize_model_by_size(model_info)
-    category_info = {
-        "category": category,
-        "description": MODEL_SIZE_CATEGORIES.get(category, {}).get("description", "Unknown size"),
-        "estimated_params": None
-    }
+    # Get logger instance
+    logger = logging.getLogger('benchmark')
 
-    # Try to get estimated parameter count
-    if isinstance(model_info, dict) and 'name' in model_info:
-        model_name = model_info['name']
+    try:
+        category = categorize_model_by_size(model_info)
+        category_info = {
+            "category": category,
+            "description": MODEL_SIZE_CATEGORIES.get(category, {}).get("description", "Unknown size"),
+            "estimated_params": None
+        }
 
-        # First, try to get parameter count from API data
-        if 'parameter_size' in model_info:
-            param_str = model_info['parameter_size']
-            if isinstance(param_str, str):
-                # Extract and format the parameter count from API
-                match = re.search(r'(\d+(?:\.\d+)?)\s*[BbMmKkTt]', param_str)
-                if match:
-                    category_info["estimated_params"] = match.group(0).upper()
+        # Try to get estimated parameter count
+        if isinstance(model_info, dict) and 'name' in model_info:
+            model_name = model_info['name']
 
-        # If no API data, check for MoE patterns or extract from model name
-        if not category_info["estimated_params"]:
-            # Check for general MoE patterns
-            moe_match = re.search(
-                r'(\d+)x(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
-            if moe_match:
-                experts = int(moe_match.group(1))
-                expert_size = float(moe_match.group(2))
-                total_params = estimate_moe_parameters(experts, expert_size)
+            # Ensure model_name is a string
+            if not isinstance(model_name, str):
+                logger.warning(
+                    f"Model name is not a string: {type(model_name)} = {model_name}")
+                return category_info
 
-                # Format the estimated parameter count
-                if total_params >= 1000:
-                    category_info["estimated_params"] = f"{total_params/1000:.1f}T"
+            # First, try to get parameter count from API data
+            if isinstance(model_info, dict) and 'parameter_size' in model_info:
+                param_str = model_info['parameter_size']
+                if isinstance(param_str, str):
+                    # Extract and format the parameter count from API
+                    match = re.search(
+                        r'(\d+(?:\.\d+)?)\s*[BbMmKkTt]', param_str)
+                    if match:
+                        category_info["estimated_params"] = match.group(
+                            0).upper()
+
+            # If no API data, check for MoE patterns or extract from model name
+            if not category_info["estimated_params"]:
+                # Check for general MoE patterns
+                moe_match = re.search(
+                    r'(\d+)x(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
+                if moe_match:
+                    experts = int(moe_match.group(1))
+                    expert_size = float(moe_match.group(2))
+                    total_params = estimate_moe_parameters(
+                        experts, expert_size)
+
+                    # Format the estimated parameter count
+                    if total_params >= 1000:
+                        category_info["estimated_params"] = f"{total_params/1000:.1f}T"
+                    else:
+                        category_info["estimated_params"] = f"{total_params:.1f}B"
                 else:
-                    category_info["estimated_params"] = f"{total_params:.1f}B"
-            else:
-                # Regular parameter extraction for non-MoE models
-                match = re.search(r'(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
-                if match:
-                    category_info["estimated_params"] = match.group(0).upper()
+                    # Regular parameter extraction for non-MoE models
+                    match = re.search(
+                        r'(\d+(?:\.\d+)?)\s*[BbMmKk]', model_name)
+                    if match:
+                        category_info["estimated_params"] = match.group(
+                            0).upper()
 
-    return category_info
+        return category_info
+
+    except Exception as e:
+        logger.error(
+            f"Error in get_model_category_info with model_info {type(model_info)}: {e}")
+        # Return a safe fallback
+        return {
+            "category": "unknown",
+            "description": "Unknown size",
+            "estimated_params": None
+        }
 
 
 def setup_logging(log_file=None, verbose=True):
@@ -366,14 +486,11 @@ def benchmark_model(model_name, questions, logger, verbose=True):
         if not load_result['success']:
             error_msg = f"Failed to load model {model_name}: {load_result['message']}"
             model_results["errors"].append(error_msg)
-            logger.error(error_msg)
             if verbose:
                 logger.error(f"  ❌ {error_msg}")
             return model_results
 
         model_results["load_time"] = round(load_end - load_start, 3)
-        logger.info(
-            f"Model loaded successfully in {model_results['load_time']:.3f} seconds")
         if verbose:
             logger.info(
                 f"  ✅ Loaded in {model_results['load_time']:.3f}s")
@@ -414,10 +531,9 @@ def benchmark_model(model_name, questions, logger, verbose=True):
                 if response.startswith("Error: ") or response.startswith("Exception: "):
                     question_result["error"] = response
                     model_results["errors"].append(f"Question {i}: {response}")
-                    logger.warning(
-                        f"Error response for question {i}: {response}")
                     if verbose:
-                        logger.warning(f"     ❌ Error: {response}")
+                        logger.warning(
+                            f"     ❌ Error response for question {i}: {response}")
                 else:
                     # Clean the response (remove thinking tags) and store it
                     cleaned_response = clean_response(response)
@@ -431,7 +547,6 @@ def benchmark_model(model_name, questions, logger, verbose=True):
                 error_msg = f"Exception during question {i}: {str(e)}"
                 question_result["error"] = error_msg
                 model_results["errors"].append(error_msg)
-                logger.error(error_msg)
                 if verbose:
                     logger.error(f"     ❌ Exception: {str(e)}")
 
@@ -510,6 +625,12 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
             logger.info(
                 f"✅ Using {len(model_names)} manually selected models")
     else:
+        # Get blacklisted models first for logging
+        blacklisted_models = get_blacklisted_models()
+        if blacklisted_models:
+            logger.info(
+                f"📋 Blacklisted models: {', '.join(blacklisted_models)}")
+
         models = get_available_models()
         if not isinstance(models, list):
             error_msg = f"Error getting models: {models}"
@@ -521,7 +642,7 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
             logger.error(error_msg)
             return None
 
-        model_names = [model['name'] for model in models]
+        model_names = models
 
     # Filter by category if specified (only if no specific models selected)
     if filter_category and selected_models is None:
@@ -898,16 +1019,29 @@ def get_yes_no(prompt, default=None):
 
 def get_available_models():
     """
-    Get list of available Ollama models
+    Get list of available Ollama models, excluding blacklisted models
 
     Returns:
-        list: List of model names, or None if error
+        list: List of model names (excluding blacklisted), or None if error
     """
     try:
         models = list_ollama_models()
         if isinstance(models, list):
             model_names = [model['name'] for model in models]
             model_names.sort()  # Sort alphabetically
+
+            # Get blacklisted models and filter them out
+            blacklisted_models = get_blacklisted_models()
+            if blacklisted_models:
+                original_count = len(model_names)
+                model_names = [
+                    name for name in model_names if name not in blacklisted_models]
+                filtered_count = original_count - len(model_names)
+
+                if filtered_count > 0:
+                    print(
+                        f"📋 Filtered out {filtered_count} blacklisted model(s): {', '.join(blacklisted_models)}")
+
             return model_names
         else:
             print(f"❌ Error getting models: {models}")
