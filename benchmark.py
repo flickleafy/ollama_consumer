@@ -28,7 +28,8 @@ from main import (
     list_ollama_models,
     model_manager,
     ask_ollama,
-    get_model_info
+    get_model_info,
+    get_system_prompt_from_config
 )
 
 # Default benchmark questions
@@ -396,7 +397,9 @@ def benchmark_model(model_name, questions, logger, verbose=True):
             try:
                 # Measure inference time
                 inference_start = time.time()
-                response = ask_ollama(question, model_name)
+                system_prompt = get_system_prompt_from_config()
+                response = ask_ollama(
+                    question, model_name, system_prompt if system_prompt else None)
                 inference_end = time.time()
 
                 inference_time = round(inference_end - inference_start, 3)
@@ -507,7 +510,7 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
             logger.info(
                 f"✅ Using {len(model_names)} manually selected models")
     else:
-        models = list_ollama_models()
+        models = get_available_models()
         if not isinstance(models, list):
             error_msg = f"Error getting models: {models}"
             logger.error(error_msg)
@@ -549,9 +552,10 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
         logger.info(
             f"Filtering to {filter_category} models: {', '.join(model_names)}")
 
+    # Sort models alphabetically for consistent ordering
+    model_names.sort()
+
     # Single consolidated output for model selection
-    logger.info(
-        f"Found {len(model_names)} models to benchmark: {', '.join(model_names)}")
     if verbose:
         status_parts = [f"✅ Found {len(model_names)} models to benchmark"]
         if filter_category and selected_models is None:
@@ -592,6 +596,7 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
 
     try:
         for i, model_name in enumerate(model_names, 1):
+            logger.info("\n" + "-" * 40)
             logger.info(
                 f"[{i}/{len(model_names)}] Testing model: {model_name}")
             logger.info("-" * 40)
@@ -901,7 +906,9 @@ def get_available_models():
     try:
         models = list_ollama_models()
         if isinstance(models, list):
-            return [model['name'] for model in models]
+            model_names = [model['name'] for model in models]
+            model_names.sort()  # Sort alphabetically
+            return model_names
         else:
             print(f"❌ Error getting models: {models}")
             return None
@@ -1145,8 +1152,6 @@ def interactive_mode():
 
     elif selection_method == 'category':
         # Model category filtering
-        print("\n📏 Model Category Filtering:")
-        list_model_categories()
 
         categories = list(MODEL_SIZE_CATEGORIES.keys()) + ['unknown']
         print("Available categories:")
