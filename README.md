@@ -76,6 +76,26 @@ The `config.ini` file stores:
 - Currently loaded model information
 - Service configuration settings
 - User preferences
+- **System prompt**: Optional instruction that defines how the model should behave
+
+#### Setting a System Prompt
+
+To set a system prompt that will be applied to all conversations, edit your `config.ini` file:
+
+```ini
+[ollama]
+current_loaded_model = llama3.2:latest
+system_prompt = You are a helpful AI assistant. Please provide clear, accurate, and concise responses.
+```
+
+The system prompt will be automatically applied to all conversations with any model. Examples of useful system prompts:
+
+- `You are a helpful coding assistant. Provide clean, well-commented code examples.`
+- `You are a creative writing assistant. Help with storytelling and creative ideas.`
+- `Respond in a professional and technical manner. Focus on accuracy and detail.`
+- `Keep responses brief and to the point. Use bullet points when appropriate.`
+
+To remove the system prompt, simply delete the `system_prompt` line or leave it empty.
 
 ## Project Structure
 
@@ -214,11 +234,11 @@ source ~/.zshrc
 #### **Step 5: Restart Ollama**
 
 ```bash
-# Stop Ollama service
-pkill ollama
+# Restart Ollama service
+sudo systemctl restart ollama
 
-# Start with new configuration
-ollama serve
+# Or if using a different service manager:
+# sudo service ollama restart
 ```
 
 ### GPU Optimization Benefits

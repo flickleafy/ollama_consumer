@@ -66,16 +66,22 @@ import time
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.ini')
 
 
-def ask_ollama(prompt, model="llama3"):
+def ask_ollama(prompt, model="llama3", system_prompt=None):
     """Send a prompt to Ollama and get response. Pure question/answer function."""
     try:
+        payload = {
+            'model': model,
+            'prompt': prompt,
+            'stream': False  # Disable streaming to get a single JSON response
+        }
+
+        # Add system prompt if provided
+        if system_prompt:
+            payload['system'] = system_prompt
+
         response = requests.post(
             'http://localhost:11434/api/generate',
-            json={
-                'model': model,
-                'prompt': prompt,
-                'stream': False  # Disable streaming to get a single JSON response
-            }
+            json=payload
         )
         if response.status_code == 200:
             return response.json().get('response', '')
@@ -95,6 +101,16 @@ def list_ollama_models():
             return f"Error: {response.status_code}"
     except Exception as e:
         return f"Connection error: {str(e)}"
+
+
+def get_system_prompt_from_config():
+    """Get system prompt from config file if it exists"""
+    try:
+        config = configparser.ConfigParser()
+        config.read(CONFIG_PATH)
+        return config.get('ollama', 'system_prompt', fallback='').strip()
+    except Exception:
+        return ''
 
 # Model Management Functions - Handle loading/unloading operations
 
@@ -124,7 +140,9 @@ class ModelManager:
     def load_model(self, model):
         """Load a model by sending a test prompt"""
         try:
-            response = ask_ollama("ping", model)
+            system_prompt = get_system_prompt_from_config()
+            response = ask_ollama(
+                "ping", model, system_prompt if system_prompt else None)
             if "Error" not in response:
                 self.set_current_loaded_model(model)
                 return {"success": True, "message": f"Model {model} loaded successfully"}
@@ -522,7 +540,9 @@ if __name__ == "__main__":
             continue
         print(color_text(f"User prompt: {prompt}", 'green'))
         print("System: Sending prompt to model...")
-        response = ask_ollama(prompt, selected_model)
+        system_prompt = get_system_prompt_from_config()
+        response = ask_ollama(prompt, selected_model,
+                              system_prompt if system_prompt else None)
         print("\nModel response:")
         print(format_model_response(response))
         print("\n" + "-"*50 + "\n")

@@ -1,3 +1,4 @@
 [ollama]
 current_loaded_model = phi4-reasoning:latest
+system_prompt = You are a helpful AI assistant. Please provide clear, accurate, and concise responses in plain english language.
 
