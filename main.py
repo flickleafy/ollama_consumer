@@ -1,6 +1,6 @@
 """
 
-Olama Consumer - Interactive chat interface for Ollama models
+Ollama Consumer - Interactive chat interface for Ollama models
 
 Copyright (C) 2025 flickleafy
 
@@ -62,12 +62,25 @@ import sys
 import re
 import subprocess
 import time
+import base64
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.ini')
 
 
-def ask_ollama(prompt, model="llama3", system_prompt=None):
-    """Send a prompt to Ollama and get response. Pure question/answer function."""
+def ask_ollama(prompt, model="llama3", system_prompt=None, image_data=None, use_config_params=True):
+    """
+    Send a prompt to Ollama and get response with full parameter support.
+
+    Args:
+        prompt (str): The text prompt to send to the model
+        model (str): Name of the model to use
+        system_prompt (str, optional): System prompt to set context
+        image_data (str, optional): Base64 encoded image data for vision models
+        use_config_params (bool): Whether to apply advanced parameters from config
+
+    Returns:
+        str: Model response or error message
+    """
     try:
         payload = {
             'model': model,
@@ -79,12 +92,84 @@ def ask_ollama(prompt, model="llama3", system_prompt=None):
         if system_prompt:
             payload['system'] = system_prompt
 
+        # Apply advanced parameters from config if requested
+        if use_config_params:
+            advanced_params = get_advanced_params_from_config()
+
+            # Map config parameters to Ollama API parameters
+            param_mapping = {
+                'temperature': 'temperature',
+                'top_k': 'top_k',
+                'top_p': 'top_p',
+                'repeat_penalty': 'repeat_penalty',
+                'seed': 'seed',
+                'num_predict': 'num_predict',
+                'num_ctx': 'num_ctx',
+                'num_batch': 'num_batch',
+                'num_gqa': 'num_gqa',
+                'num_gpu': 'num_gpu',
+                'main_gpu': 'main_gpu',
+                'low_vram': 'low_vram',
+                'f16_kv': 'f16_kv',
+                'logits_all': 'logits_all',
+                'vocab_only': 'vocab_only',
+                'use_mmap': 'use_mmap',
+                'use_mlock': 'use_mlock',
+                'num_thread': 'num_thread'
+            }
+
+            # Add supported parameters to payload
+            for config_param, api_param in param_mapping.items():
+                if config_param in advanced_params:
+                    payload[api_param] = advanced_params[config_param]
+
+            # Handle streaming preference
+            if 'stream_response' in advanced_params:
+                payload['stream'] = advanced_params['stream_response']
+
+            # Handle raw response mode
+            if 'raw_response' in advanced_params:
+                payload['raw'] = advanced_params['raw_response']
+
+            # Handle thinking mode for compatible models
+            if 'enable_thinking' in advanced_params:
+                thinking_enabled = advanced_params['enable_thinking']
+                if thinking_enabled or (thinking_enabled is None and is_thinking_model(model)):
+                    # For thinking models, we might want to add special instructions
+                    thinking_format = advanced_params.get(
+                        'thinking_format', 'xml')
+                    if thinking_format == 'xml' and '<think>' not in prompt:
+                        # Only add thinking tags if not already present
+                        thinking_instruction = "\n\nPlease use <think> tags to show your reasoning process."
+                        payload['prompt'] = prompt + thinking_instruction
+
+        # Handle image input for vision models
+        if image_data:
+            # Check if model supports vision
+            vision_enabled = advanced_params.get(
+                'enable_vision') if use_config_params else None
+            if vision_enabled or (vision_enabled is None and is_vision_model(model)):
+                payload['images'] = [image_data]
+            else:
+                print(
+                    f"Warning: Image provided but model '{model}' may not support vision")
+                payload['images'] = [image_data]  # Try anyway
+
         response = requests.post(
             'http://localhost:11434/api/generate',
             json=payload
         )
+
         if response.status_code == 200:
-            return response.json().get('response', '')
+            response_data = response.json()
+
+            # Handle streaming vs non-streaming responses
+            if payload.get('stream', False):
+                # For streaming, we'd need to handle multiple JSON objects
+                # For now, just return the response field
+                return response_data.get('response', '')
+            else:
+                return response_data.get('response', '')
         else:
             return f"Error: {response.status_code}"
     except Exception as e:
@@ -111,6 +196,164 @@ def get_system_prompt_from_config():
         return config.get('ollama', 'system_prompt', fallback='').strip()
     except Exception:
         return ''
+
+
+def get_advanced_params_from_config():
+    """
+    Get all advanced model parameters from config file
+
+    Returns:
+        dict: Dictionary containing all advanced parameters with their configured values
+    """
+    try:
+        config = configparser.ConfigParser()
+        config.read(CONFIG_PATH)
+
+        params = {}
+
+        if config.has_section('ollama'):
+            # Numeric parameters
+            numeric_params = [
+                'temperature', 'top_k', 'top_p', 'repeat_penalty', 'seed',
+                'num_predict', 'num_ctx', 'num_batch', 'num_gqa', 'num_gpu',
+                'main_gpu', 'num_thread', 'max_image_size'
+            ]
+
+            for param in numeric_params:
+                if config.has_option('ollama', param):
+                    try:
+                        value = config.get('ollama', param)
+                        if value.strip() == '-1':
+                            # -1 means auto/default, don't include in request
+                            continue
+                        elif param in ['temperature', 'top_p', 'repeat_penalty']:
+                            params[param] = float(value)
+                        else:
+                            params[param] = int(value)
+                    except (ValueError, TypeError):
+                        continue
+
+            # Boolean parameters
+            boolean_params = [
+                'low_vram', 'f16_kv', 'logits_all', 'vocab_only',
+                'use_mmap', 'use_mlock', 'stream_response', 'raw_response'
+            ]
+
+            for param in boolean_params:
+                if config.has_option('ollama', param):
+                    try:
+                        value = config.get('ollama', param).lower()
+                        if value in ['true', 'false']:
+                            params[param] = value == 'true'
+                    except (ValueError, TypeError):
+                        continue
+
+            # String parameters
+            string_params = [
+                'thinking_format', 'reasoning_depth', 'image_quality', 'image_format'
+            ]
+
+            for param in string_params:
+                if config.has_option('ollama', param):
+                    value = config.get('ollama', param).strip()
+                    if value and value != 'auto':
+                        params[param] = value
+
+            # Special handling for enable_thinking and enable_vision
+            if config.has_option('ollama', 'enable_thinking'):
+                thinking = config.get(
+                    'ollama', 'enable_thinking').lower().strip()
+                if thinking == 'true':
+                    params['enable_thinking'] = True
+                elif thinking == 'false':
+                    params['enable_thinking'] = False
+                # 'auto' means model-dependent, don't set explicitly
+
+            if config.has_option('ollama', 'enable_vision'):
+                vision = config.get('ollama', 'enable_vision').lower().strip()
+                if vision == 'true':
+                    params['enable_vision'] = True
+                elif vision == 'false':
+                    params['enable_vision'] = False
+                # 'auto' means model-dependent, don't set explicitly
+
+        return params
+    except Exception:
+        return {}
+
+
+def is_vision_model(model_name):
+    """
+    Check if a model supports vision/image input based on model name
+
+    Args:
+        model_name (str): Name of the model to check
+
+    Returns:
+        bool: True if model likely supports vision, False otherwise
+    """
+    vision_keywords = [
+        'vision', 'visual', 'vl', 'image', 'multimodal', 'mm',
+        'qwen2.5vl', 'llava', 'bakllava', 'moondream', 'cogvlm'
+    ]
+
+    model_lower = model_name.lower()
+
+    # Special case: reasoning models like phi4-reasoning are not vision models
+    if 'reasoning' in model_lower and 'vl' not in model_lower:
+        return False
+
+    return any(keyword in model_lower for keyword in vision_keywords)
+
+
+def is_thinking_model(model_name):
+    """
+    Check if a model supports thinking/reasoning mode based on model name
+
+    Args:
+        model_name (str): Name of the model to check
+
+    Returns:
+        bool: True if model likely supports thinking mode, False otherwise
+    """
+    thinking_keywords = [
+        'reasoning', 'think', 'thought', 'o1', 'qwq', 'deepseek-r1',
+        'phi4-reasoning', 'marco-o1'
+    ]
+
+    model_lower = model_name.lower()
+    return any(keyword in model_lower for keyword in thinking_keywords)
+
+
+def prepare_image_input(image_path_or_data):
+    """
+    Prepare image input for vision models
+
+    Args:
+        image_path_or_data (str): Path to image file or base64 encoded image data
+
+    Returns:
+        str: Base64 encoded image data, or None if failed
+    """
+    try:
+        import base64
+
+        # If it looks like a file path
+        if os.path.exists(image_path_or_data):
+            with open(image_path_or_data, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+                return image_data
+        # If it's already base64 data
+        elif image_path_or_data.startswith('data:image/') or len(image_path_or_data) > 100:
+            # Remove data URL prefix if present
+            if image_path_or_data.startswith('data:image/'):
+                image_path_or_data = image_path_or_data.split(',', 1)[1]
+            return image_path_or_data
+        else:
+            return None
+    except Exception:
+        return None
+
 
 # Model Management Functions - Handle loading/unloading operations
 
@@ -527,9 +770,22 @@ if __name__ == "__main__":
 
     selected_model = select_model()
     print(f"Using model: {selected_model}")
+
+    # Show model capabilities
+    if is_vision_model(selected_model):
+        print(color_text(
+            "📷 This model supports image input! Use 'img:path/to/image.jpg your prompt' to include images.", 'cyan'))
+    if is_thinking_model(selected_model):
+        print(color_text(
+            "🧠 This model supports thinking mode! It may show reasoning in <think> tags.", 'cyan'))
+
     while True:
         print(color_text(
             "Enter your prompt (or 'exit' to quit, 's' to select new model):", 'green'))
+        if is_vision_model(selected_model):
+            print(color_text(
+                "  📷 For images: img:path/to/image.jpg your prompt here", 'cyan'))
+
         prompt = input("> ")
         if prompt.lower() in ['exit', 'quit', 'q']:
             break
@@ -537,12 +793,49 @@ if __name__ == "__main__":
             previous_model = selected_model
             selected_model = select_model(previous_model)
             print(f"Using model: {selected_model}")
+
+            # Show capabilities for new model
+            if is_vision_model(selected_model):
+                print(color_text(
+                    "📷 This model supports image input! Use 'img:path/to/image.jpg your prompt' to include images.", 'cyan'))
+            if is_thinking_model(selected_model):
+                print(color_text(
+                    "🧠 This model supports thinking mode! It may show reasoning in <think> tags.", 'cyan'))
             continue
-        print(color_text(f"User prompt: {prompt}", 'green'))
+
+        # Parse image input if present
+        image_data = None
+        actual_prompt = prompt
+
+        if prompt.startswith('img:'):
+            # Extract image path and prompt
+            parts = prompt[4:].split(' ', 1)
+            if len(parts) >= 1:
+                image_path = parts[0]
+                actual_prompt = parts[1] if len(
+                    parts) > 1 else "Describe this image."
+
+                # Prepare image data
+                image_data = prepare_image_input(image_path)
+                if image_data is None:
+                    print(color_text(
+                        f"❌ Failed to load image: {image_path}", 'red'))
+                    continue
+                else:
+                    print(color_text(f"📷 Image loaded: {image_path}", 'cyan'))
+
+        print(color_text(f"User prompt: {actual_prompt}", 'green'))
+        if image_data:
+            print(color_text("📷 Image included in request", 'cyan'))
+
         print("System: Sending prompt to model...")
         system_prompt = get_system_prompt_from_config()
-        response = ask_ollama(prompt, selected_model,
-                              system_prompt if system_prompt else None)
+        response = ask_ollama(
+            actual_prompt,
+            selected_model,
+            system_prompt if system_prompt else None,
+            image_data
+        )
         print("\nModel response:")
         print(format_model_response(response))
         print("\n" + "-"*50 + "\n")

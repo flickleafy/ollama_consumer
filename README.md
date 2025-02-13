@@ -16,6 +16,10 @@ A Python-based interactive chat interface for Ollama models with advanced model 
 - 🎮 **Interactive Benchmark Mode**: User-friendly guided benchmark configuration
 - 📁 **Organized Results**: Category-based file output for better data management
 - 🎯 **GPU Optimization**: Multi-GPU configuration tools for optimal performance
+- 🧠 **Advanced Parameter Control**: Fine-tune model behavior with 20+ parameters
+- 📷 **Vision Model Support**: Image input support for multimodal models
+- 🤔 **Thinking Mode**: Automatic detection and support for reasoning models
+- 🎛️ **Real-time Configuration**: Dynamic parameter application from config files
 
 ## Requirements
 
@@ -90,6 +94,15 @@ current_loaded_model = llama3.2:latest
 system_prompt = You are a helpful AI assistant. Please provide clear, accurate, and concise responses.
 ```
 
+The system prompt will be automatically applied to all conversations with any model. Examples of useful system prompts:
+
+- `You are a helpful coding assistant. Provide clean, well-commented code examples.`
+- `You are a creative writing assistant. Help with storytelling and creative ideas.`
+- `Respond in a professional and technical manner. Focus on accuracy and detail.`
+- `Keep responses brief and to the point. Use bullet points when appropriate.`
+
+To remove the system prompt, simply delete the `system_prompt` line or leave it empty.
+
 #### Blacklisting Models
 
 To exclude problematic models from benchmarking, add them to the blacklist section in your `config.ini` file:
@@ -116,14 +129,185 @@ This is useful for excluding models that:
 - Cause system instability
 - Take excessively long to load or respond
 
-The system prompt will be automatically applied to all conversations with any model. Examples of useful system prompts:
+### Advanced Model Parameters
 
-- `You are a helpful coding assistant. Provide clean, well-commented code examples.`
-- `You are a creative writing assistant. Help with storytelling and creative ideas.`
-- `Respond in a professional and technical manner. Focus on accuracy and detail.`
-- `Keep responses brief and to the point. Use bullet points when appropriate.`
+The Ollama consumer supports a comprehensive set of advanced model parameters that can be configured in your `config.ini` file to fine-tune model behavior.
 
-To remove the system prompt, simply delete the `system_prompt` line or leave it empty.
+#### Model Generation Parameters
+
+```ini
+[ollama]
+# Generation control
+temperature = 0.7          # Creativity/randomness (0.0-2.0)
+top_k = 40                 # Token sampling pool size
+top_p = 0.9                # Nucleus sampling threshold
+repeat_penalty = 1.1       # Penalty for repetition (1.0 = no penalty)
+seed = -1                  # Random seed (-1 = random)
+
+# Response length and context
+num_predict = -1           # Max tokens to generate (-1 = model default)
+num_ctx = 2048             # Context window size
+num_batch = 512            # Batch size for processing
+
+# GPU and memory optimization
+num_gpu = -1               # GPU layers to use (-1 = auto)
+main_gpu = 0               # Primary GPU index
+low_vram = false           # Enable low VRAM mode
+num_gqa = 1                # Group query attention
+num_thread = -1            # CPU threads (-1 = auto)
+
+# Memory management
+f16_kv = true              # Use 16-bit for key/value cache
+use_mmap = true            # Use memory mapping
+use_mlock = false          # Lock memory pages
+logits_all = false         # Return logits for all tokens
+vocab_only = false         # Load vocabulary only
+```
+
+#### Model-Specific Behavior Controls
+
+```ini
+# Thinking and reasoning modes
+enable_thinking = auto     # Enable thinking mode (true/false/auto)
+thinking_format = xml      # Format for thinking tags (xml/markdown)
+reasoning_depth = normal   # Reasoning depth (shallow/normal/deep)
+
+# Response format
+stream_response = false    # Enable streaming responses
+raw_response = false       # Return raw model output
+```
+
+#### Vision Model Support
+
+For models that support image input (like qwen2.5vl, llava, etc.):
+
+```ini
+# Vision model parameters
+enable_vision = auto       # Enable vision support (true/false/auto)
+image_quality = high       # Image processing quality (low/medium/high)
+max_image_size = 1024      # Maximum image dimension (pixels)
+image_format = auto        # Preferred image format (auto/jpeg/png)
+```
+
+### Image Input in Chat
+
+For vision-capable models, you can include images in your prompts using the following syntax:
+
+```bash
+> img:path/to/image.jpg Describe what you see in this image
+```
+
+The system will automatically:
+
+- Detect if the current model supports vision
+- Load and encode the image
+- Include it in the request to the model
+- Show visual indicators when images are processed
+
+Supported image formats: JPEG, PNG, GIF, WebP, BMP
+
+### Model Type Detection
+
+The system automatically detects model capabilities:
+
+#### **Vision Models**
+
+Automatically detected by keywords: `vision`, `visual`, `vl`, `image`, `multimodal`, `llava`, `moondream`, etc.
+
+Examples: `qwen2.5vl:latest`, `llava:latest`, `moondream:latest`
+
+#### **Thinking/Reasoning Models**
+
+Automatically detected by keywords: `reasoning`, `think`, `thought`, `o1`, `qwq`, `deepseek-r1`, etc.
+
+Examples: `phi4-reasoning:latest`, `deepseek-r1:latest`, `qwq:latest`
+
+The chat interface will show capabilities when you select a model:
+
+- 📷 Vision support indicator
+- 🧠 Thinking mode indicator
+
+### Parameter Behavior
+
+- **Auto Values (-1)**: Let Ollama/model choose optimal settings
+- **Model-Specific**: Parameters are applied intelligently based on model type
+- **Fallback**: Invalid parameters are ignored without breaking functionality
+- **Override**: You can disable config parameters by setting `use_config_params=False` in API calls
+
+## Practical Examples
+
+### Example 1: Creative Writing with High Temperature
+
+```ini
+[ollama]
+temperature = 1.2
+top_p = 0.95
+repeat_penalty = 1.05
+num_predict = 500
+```
+
+Use for creative tasks like story writing, poetry, or brainstorming.
+
+### Example 2: Precise Analysis with Low Temperature
+
+```ini
+[ollama]
+temperature = 0.1
+top_k = 10
+top_p = 0.5
+repeat_penalty = 1.2
+```
+
+Use for factual analysis, code review, or technical documentation.
+
+### Example 3: Vision Model Setup
+
+```ini
+[ollama]
+enable_vision = true
+image_quality = high
+max_image_size = 2048
+temperature = 0.7
+```
+
+Then use in chat:
+
+```bash
+> img:/path/to/screenshot.png What programming language is shown in this code?
+> img:/path/to/chart.jpg Analyze the trends in this graph
+```
+
+### Example 4: Thinking Model Configuration
+
+```ini
+[ollama]
+enable_thinking = true
+thinking_format = xml
+reasoning_depth = deep
+temperature = 0.8
+num_ctx = 4096
+```
+
+For complex reasoning tasks like math problems, logic puzzles, or strategic planning.
+
+### Example 5: Performance Optimization
+
+```ini
+[ollama]
+# GPU optimization
+num_gpu = -1
+main_gpu = 0
+low_vram = false
+f16_kv = true
+
+# Memory efficiency
+use_mmap = true
+use_mlock = false
+num_batch = 1024
+num_thread = -1
+```
+
+For maximum performance on high-end hardware.
 
 ## Project Structure
 

@@ -2,6 +2,39 @@
 current_loaded_model = phi4-reasoning:latest
 system_prompt = You are a helpful AI assistant. Please provide clear, accurate, and concise responses in plain english language.
 
+# Advanced model parameters
+temperature = 0.7
+top_k = 40
+top_p = 0.9
+repeat_penalty = 1.1
+seed = -1
+num_predict = -1
+num_ctx = 2048
+num_batch = 512
+num_gqa = 1
+num_gpu = -1
+main_gpu = 0
+low_vram = false
+f16_kv = true
+logits_all = false
+vocab_only = false
+use_mmap = true
+use_mlock = false
+num_thread = -1
+
+# Model-specific behavior controls
+enable_thinking = auto
+thinking_format = xml
+reasoning_depth = normal
+stream_response = false
+raw_response = false
+
+# Vision model parameters (for qwen2.5vl and other vision models)
+enable_vision = auto
+image_quality = high
+max_image_size = 1024
+image_format = auto
+
 [blacklist]
 # Models to exclude from benchmarking (JSON array format)
 # Examples:
