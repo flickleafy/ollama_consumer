@@ -723,6 +723,254 @@ def get_model_info(model_name="llama3"):
         return f"Error: {str(e)}"
 
 
+def get_model_capabilities(model_name):
+    """
+    Get model capabilities from Ollama API
+
+    Args:
+        model_name (str): Name of the model to analyze
+
+    Returns:
+        list: List of capability strings based on API data
+    """
+    capabilities = []
+
+    try:
+        # Get detailed model information from Ollama API
+        response = requests.post('http://localhost:11434/api/show',
+                                 json={'name': model_name})
+
+        if response.status_code == 200:
+            model_info = response.json()
+
+            # Extract capabilities from model information
+            capabilities = extract_capabilities_from_api_data(model_info)
+
+        else:
+            # Fallback to keyword-based detection if API call fails
+            capabilities = extract_capabilities_from_name(model_name)
+
+    except Exception:
+        # Fallback to keyword-based detection if there's any error
+        capabilities = extract_capabilities_from_name(model_name)
+
+    return capabilities
+
+
+def extract_capabilities_from_api_data(model_info):
+    """
+    Extract capabilities from Ollama API model information
+
+    Args:
+        model_info (dict): Model information from Ollama API
+
+    Returns:
+        list: List of capability strings
+    """
+    capabilities = []
+
+    # Get capabilities directly from API
+    api_capabilities = model_info.get('capabilities', [])
+
+    # Map API capabilities to our capability names
+    for api_cap in api_capabilities:
+        if api_cap == 'vision':
+            capabilities.append('vision')
+        elif api_cap == 'thinking':
+            # Map "thinking" to "reasoning" - only add if not already present
+            if 'reasoning' not in capabilities:
+                capabilities.append('reasoning')
+        elif api_cap == 'completion':
+            # All models have completion, so we don't need to show this
+            pass
+        elif api_cap == 'chat':
+            # Most models support chat, so we don't need to show this
+            pass
+        elif api_cap == 'quantized':
+            pass
+        else:
+            # Add any other capabilities as-is, but map "thinking" to "reasoning"
+            if api_cap == 'thinking':
+                if 'reasoning' not in capabilities:
+                    capabilities.append('reasoning')
+            else:
+                capabilities.append(api_cap)
+
+    # Get model details for additional analysis
+    details = model_info.get('details', {})
+    model_name = model_info.get('model', '').lower()
+    template = model_info.get('template', '').lower()
+    system = model_info.get('system', '').lower()
+
+    # Check for reasoning capabilities in system prompts or templates
+    reasoning_indicators = [
+        'reasoning', 'think', 'thought', 'step by step', 'chain of thought',
+        'analyze', 'reasoning process', '<think>', 'reasoning steps'
+    ]
+    if any(indicator in template or indicator in system for indicator in reasoning_indicators):
+        if 'reasoning' not in capabilities:
+            capabilities.append('reasoning')
+
+    # Check model family for additional insights
+    family = details.get('family', '').lower()
+    families = details.get('families', [])
+
+    # Check families list for more detailed information
+    for fam in families:
+        fam_lower = fam.lower()
+        if 'llava' in fam_lower or 'vision' in fam_lower:
+            if 'vision' not in capabilities:
+                capabilities.append('vision')
+        if 'reasoning' in fam_lower or 'thinking' in fam_lower:
+            if 'reasoning' not in capabilities:
+                capabilities.append('reasoning')
+
+    # Check parameter count for MoE detection
+    param_size = details.get('parameter_size', '')
+    if param_size:
+        # Large parameter counts might indicate MoE models
+        if 'B' in param_size:
+            try:
+                param_num = float(param_size.replace('B', '').replace(' ', ''))
+                # Very large models (>100B) are often MoE, or models with 'x' pattern
+                if param_num > 100 or 'x' in model_name:
+                    capabilities.append('moe')
+            except:
+                pass
+
+    # Fallback to name-based detection for additional capabilities not covered by API
+    name_based_capabilities = extract_capabilities_from_name(model_name)
+
+    # Merge capabilities, avoiding duplicates
+    for cap in name_based_capabilities:
+        if cap not in capabilities:
+            capabilities.append(cap)
+
+    # Final cleanup: ensure "thinking" is mapped to "reasoning"
+    if 'thinking' in capabilities:
+        if 'reasoning' not in capabilities:
+            capabilities = [cap if cap !=
+                            'thinking' else 'reasoning' for cap in capabilities]
+        else:
+            # Remove "thinking" if "reasoning" is already present
+            capabilities = [cap for cap in capabilities if cap != 'thinking']
+
+    return capabilities
+
+
+def extract_capabilities_from_name(model_name):
+    """
+    Fallback function to detect capabilities from model name (original logic)
+
+    Args:
+        model_name (str): Name of the model to analyze
+
+    Returns:
+        list: List of capability strings
+    """
+    capabilities = []
+    model_lower = model_name.lower()
+
+    # Check for reasoning capability
+    reasoning_keywords = [
+        'reasoning', 'think', 'thought', 'o1', 'qwq', 'deepseek-r1',
+        'phi4-reasoning', 'marco-o1'
+    ]
+    if any(keyword in model_lower for keyword in reasoning_keywords):
+        capabilities.append('reasoning')
+
+    # Check for vision capability
+    vision_keywords = [
+        'vision', 'visual', 'vl', 'image', 'multimodal', 'mm',
+        'qwen2.5vl', 'llava', 'bakllava', 'moondream', 'cogvlm'
+    ]
+    if any(keyword in model_lower for keyword in vision_keywords):
+        capabilities.append('vision')
+
+    # Check for multimodal capability (broader than just vision)
+    multimodal_keywords = [
+        'multimodal', 'mm', 'llama4', 'gpt-4v', 'claude-3'
+    ]
+    if any(keyword in model_lower for keyword in multimodal_keywords):
+        if 'vision' not in capabilities:  # Don't duplicate if already has vision
+            capabilities.append('multimodal')
+        else:
+            # Replace vision with multimodal for models that are explicitly multimodal
+            capabilities.remove('vision')
+            capabilities.append('multimodal')
+
+    # Check for MoE (Mixture of Experts) models
+    moe_keywords = [
+        'moe', 'mixtral', 'switch', 'expert', 'x', 'deepseek-r1:671b',
+        'qwen3:235b', 'qwen3:30b', 'llama4:'
+    ]
+    # Special patterns for MoE detection
+    if any(keyword in model_lower for keyword in moe_keywords) or \
+       'x' in model_lower and ('b' in model_lower or 'expert' in model_lower) or \
+       ('llama4:' in model_lower and 'x' in model_lower) or \
+       ('qwen3:' in model_lower and ('235b' in model_lower or '30b' in model_lower)) or \
+       'deepseek-r1:671b' in model_lower:
+        capabilities.append('moe')
+
+    # Check for "plus" variants
+    if 'plus' in model_lower:
+        capabilities.append('plus')
+
+    # Check for large context models
+    large_context_keywords = [
+        'long', 'context', 'longcontext', '128k', '256k', '1m', '2m'
+    ]
+    if any(keyword in model_lower for keyword in large_context_keywords):
+        capabilities.append('long-context')
+
+    # Check for coding specialized models
+    coding_keywords = [
+        'code', 'coder', 'codellama', 'starcoder', 'wizard-coder', 'deepseek-coder'
+    ]
+    if any(keyword in model_lower for keyword in coding_keywords):
+        capabilities.append('coding')
+
+    # Check for math specialized models
+    math_keywords = [
+        'math', 'mathematician', 'mathstral', 'wizard-math'
+    ]
+    if any(keyword in model_lower for keyword in math_keywords):
+        capabilities.append('math')
+
+    return capabilities
+
+
+def format_model_capabilities(capabilities):
+    """
+    Format capabilities list into a string for display
+
+    Args:
+        capabilities (list): List of capability strings
+
+    Returns:
+        str: Formatted capabilities string or empty string if no capabilities
+    """
+    if not capabilities:
+        return ""
+
+    # If both "thinking" and "reasoning" are present, only keep "reasoning"
+    if 'thinking' in capabilities and 'reasoning' in capabilities:
+        capabilities = [cap for cap in capabilities if cap != 'thinking']
+    # If only "thinking" is present, replace it with "reasoning"
+    elif 'thinking' in capabilities:
+        capabilities = [cap if cap !=
+                        'thinking' else 'reasoning' for cap in capabilities]
+
+    # Sort capabilities for consistent ordering
+    capability_order = ['reasoning', 'vision', 'multimodal', 'moe', 'plus',
+                        'long-context', 'coding', 'math']
+    sorted_capabilities = sorted(capabilities, key=lambda x: capability_order.index(
+        x) if x in capability_order else len(capability_order))
+
+    formatted = "(" + ")(".join(sorted_capabilities) + ")"
+    return f" {formatted}"
+
+
 def select_model(previous_model=None):
     """Display a numbered list of models and ask user to choose one. Handle model switching."""
     models = list_ollama_models()
@@ -737,7 +985,10 @@ def select_model(previous_model=None):
     for i, model in enumerate(models, 1):
         parameter_size = model.get('details', {}).get(
             'parameter_size', 'Unknown')
-        print(f"{i}. {model['name']} - Parameters: {parameter_size}")
+        capabilities = get_model_capabilities(model['name'])
+        capabilities_formatted = format_model_capabilities(capabilities)
+        print(
+            f"{i}. {model['name']} - Parameters: {parameter_size}{capabilities_formatted}")
 
     while True:
         try:
@@ -976,12 +1227,29 @@ if __name__ == "__main__":
 
         print("System: Sending prompt to model...")
         system_prompt = get_system_prompt_from_config()
+
+        # Start timing the API request
+        start_time = time.time()
+
         response = ask_ollama(
             actual_prompt,
             selected_model,
             system_prompt if system_prompt else None,
             image_data
         )
-        print("\nModel response:")
+
+        # Stop timing and calculate elapsed time
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+
+        # Format elapsed time
+        if elapsed_time < 60:
+            time_str = f"{elapsed_time:.1f}s"
+        else:
+            minutes = int(elapsed_time // 60)
+            seconds = elapsed_time % 60
+            time_str = f"{minutes}m {seconds:.1f}s"
+
+        print(f"\nModel response ({time_str}):")
         print(format_model_response(response))
         print("\n" + "-"*50 + "\n")
