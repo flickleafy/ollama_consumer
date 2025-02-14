@@ -37,7 +37,7 @@ Functions:
     get_model_info(model_name): Get detailed information about a specific model
     select_model(previous_model): Display numbered list of models for user selection
     color_text(text, color): Apply terminal color formatting to text
-    format_model_response(response): Format model response with colored thinking tags
+    format_model_response(response): Format model response with colored thinking tags visualization
 
 Features:
 - Interactive model selection and switching
@@ -294,14 +294,10 @@ def is_vision_model(model_name):
     """
     vision_keywords = [
         'vision', 'visual', 'vl', 'image', 'multimodal', 'mm',
-        'qwen2.5vl', 'llava', 'bakllava', 'moondream', 'cogvlm'
+        'qwen2.5vl', 'llava', 'bakllava', 'moondream', 'cogvlm', 'llama4'
     ]
 
     model_lower = model_name.lower()
-
-    # Special case: reasoning models like phi4-reasoning are not vision models
-    if 'reasoning' in model_lower and 'vl' not in model_lower:
-        return False
 
     return any(keyword in model_lower for keyword in vision_keywords)
 
@@ -336,7 +332,6 @@ def prepare_image_input(image_path_or_data):
         str: Base64 encoded image data, or None if failed
     """
     try:
-        import base64
 
         # If it looks like a file path
         if os.path.exists(image_path_or_data):
@@ -353,6 +348,95 @@ def prepare_image_input(image_path_or_data):
             return None
     except Exception:
         return None
+
+
+def get_images_from_folder():
+    """
+    Get list of image files from the images folder
+
+    Returns:
+        list: List of image filenames, or empty list if folder doesn't exist
+    """
+    images_folder = os.path.join(os.path.dirname(__file__), 'images')
+
+    if not os.path.exists(images_folder):
+        return []
+
+    # Common image file extensions
+    image_extensions = {'.jpg', '.jpeg', '.png',
+                        '.gif', '.bmp', '.webp', '.tiff', '.svg'}
+
+    try:
+        all_files = os.listdir(images_folder)
+        image_files = []
+
+        for file in all_files:
+            file_lower = file.lower()
+            if any(file_lower.endswith(ext) for ext in image_extensions):
+                image_files.append(file)
+
+        # Sort alphabetically for consistent ordering
+        return sorted(image_files)
+    except Exception as e:
+        print(f"Error reading images folder: {e}")
+        return []
+
+
+def select_image_from_folder():
+    """
+    Display available images from the images folder and let user choose one
+
+    Returns:
+        str: Full path to selected image, or None if cancelled/no images
+    """
+    images = get_images_from_folder()
+
+    if not images:
+        print(color_text("📷 No images found in the 'images' folder.", 'yellow'))
+        return None
+
+    print(color_text("\n📷 Available images in 'images' folder:", 'cyan'))
+    for i, image in enumerate(images, 1):
+        print(f"{i}. {image}")
+
+    print("0. Cancel (no image)")
+
+    while True:
+        try:
+            choice = input(color_text(
+                "\nSelect an image by number: ", 'green'))
+
+            if choice.strip() == '0' or choice.strip().lower() == 'cancel':
+                return None
+
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(images):
+                selected_image = images[choice_num - 1]
+                images_folder = os.path.join(
+                    os.path.dirname(__file__), 'images')
+                full_path = os.path.join(images_folder, selected_image)
+                print(color_text(f"📷 Selected: {selected_image}", 'cyan'))
+                return full_path
+            else:
+                print(f"Please enter a number between 0 and {len(images)}")
+        except ValueError:
+            print("Please enter a valid number")
+        except KeyboardInterrupt:
+            print(color_text("\nImage selection cancelled.", 'yellow'))
+            return None
+
+
+def show_image_help():
+    """Show help information about image input options"""
+    print(color_text("\n📷 Image Input Options:", 'cyan'))
+    print("  1. 'img:' - Choose from images folder")
+    print("  2. 'img:filename.jpg your prompt' - Use specific file from images folder")
+    print("  3. 'img:/full/path/to/image.jpg your prompt' - Use full file path")
+    print("  4. Type 'images' to see available images in folder")
+    print(color_text("  Examples:", 'yellow'))
+    print("    img: What do you see?")
+    print("    img:/home/user/photo.png What's in this image?")
+    print()
 
 
 # Model Management Functions - Handle loading/unloading operations
@@ -646,6 +730,9 @@ def select_model(previous_model=None):
         print(f"Error retrieving models: {models}")
         return previous_model or "llama3"  # Default model if error
 
+    # Sort models alphabetically by name
+    models.sort(key=lambda model: model['name'].lower())
+
     print("\nAvailable Models:")
     for i, model in enumerate(models, 1):
         parameter_size = model.get('details', {}).get(
@@ -718,6 +805,8 @@ def color_text(text, color):
         'green': '\033[92m',
         'yellow': '\033[93m',
         'gray': '\033[90m',
+        'cyan': '\033[96m',
+        'red': '\033[91m',
         'reset': '\033[0m'
     }
     return f"{colors.get(color, '')}{text}{colors['reset']}"
@@ -774,7 +863,7 @@ if __name__ == "__main__":
     # Show model capabilities
     if is_vision_model(selected_model):
         print(color_text(
-            "📷 This model supports image input! Use 'img:path/to/image.jpg your prompt' to include images.", 'cyan'))
+            "📷 This model supports image input! Use 'img:' to choose from images folder or 'help-img' for more options.", 'cyan'))
     if is_thinking_model(selected_model):
         print(color_text(
             "🧠 This model supports thinking mode! It may show reasoning in <think> tags.", 'cyan'))
@@ -784,7 +873,7 @@ if __name__ == "__main__":
             "Enter your prompt (or 'exit' to quit, 's' to select new model):", 'green'))
         if is_vision_model(selected_model):
             print(color_text(
-                "  📷 For images: img:path/to/image.jpg your prompt here", 'cyan'))
+                "  📷 For images: 'img:' to choose from images folder, 'help-img' for help", 'cyan'))
 
         prompt = input("> ")
         if prompt.lower() in ['exit', 'quit', 'q']:
@@ -797,10 +886,25 @@ if __name__ == "__main__":
             # Show capabilities for new model
             if is_vision_model(selected_model):
                 print(color_text(
-                    "📷 This model supports image input! Use 'img:path/to/image.jpg your prompt' to include images.", 'cyan'))
+                    "📷 This model supports image input! Use 'img:' to choose from images folder or 'help-img' for more options.", 'cyan'))
             if is_thinking_model(selected_model):
                 print(color_text(
                     "🧠 This model supports thinking mode! It may show reasoning in <think> tags.", 'cyan'))
+            continue
+        elif prompt.lower() in ['images', 'list-images']:
+            # Show available images
+            images = get_images_from_folder()
+            if images:
+                print(color_text("\n📷 Available images in 'images' folder:", 'cyan'))
+                for i, image in enumerate(images, 1):
+                    print(f"  {i}. {image}")
+                print(color_text(
+                    "Use 'img:filename.jpg your prompt' to use a specific image.", 'yellow'))
+            else:
+                print(color_text("📷 No images found in the 'images' folder.", 'yellow'))
+            continue
+        elif prompt.lower() in ['help-img', 'img-help', 'image-help']:
+            show_image_help()
             continue
 
         # Parse image input if present
@@ -810,19 +914,61 @@ if __name__ == "__main__":
         if prompt.startswith('img:'):
             # Extract image path and prompt
             parts = prompt[4:].split(' ', 1)
-            if len(parts) >= 1:
+
+            if len(parts) == 0 or parts[0].strip() == '':
+                # User typed just 'img:' - show image selection
+                selected_image_path = select_image_from_folder()
+                if selected_image_path is None:
+                    continue  # User cancelled image selection
+
+                # Get prompt for the image
+                actual_prompt = input(color_text(
+                    "Enter your prompt for the image: ", 'green'))
+                if not actual_prompt.strip():
+                    actual_prompt = "Describe this image."
+
+                image_data = prepare_image_input(selected_image_path)
+                if image_data is None:
+                    print(color_text(
+                        f"❌ Failed to load image: {selected_image_path}", 'red'))
+                    continue
+                else:
+                    print(color_text(
+                        f"📷 Image loaded: {os.path.basename(selected_image_path)}", 'cyan'))
+            else:
+                # User specified an image path/filename
                 image_path = parts[0]
                 actual_prompt = parts[1] if len(
                     parts) > 1 else "Describe this image."
+
+                # Check if it's just a filename (look in images folder)
+                if not os.path.sep in image_path and not os.path.exists(image_path):
+                    images_folder = os.path.join(
+                        os.path.dirname(__file__), 'images')
+                    full_image_path = os.path.join(images_folder, image_path)
+                    if os.path.exists(full_image_path):
+                        image_path = full_image_path
 
                 # Prepare image data
                 image_data = prepare_image_input(image_path)
                 if image_data is None:
                     print(color_text(
                         f"❌ Failed to load image: {image_path}", 'red'))
+
+                    # Suggest available images if file not found
+                    if not os.path.exists(image_path):
+                        images = get_images_from_folder()
+                        if images:
+                            print(color_text(
+                                "Available images in folder:", 'yellow'))
+                            for img in images[:5]:  # Show first 5
+                                print(f"  - {img}")
+                            if len(images) > 5:
+                                print(f"  ... and {len(images) - 5} more")
                     continue
                 else:
-                    print(color_text(f"📷 Image loaded: {image_path}", 'cyan'))
+                    print(color_text(
+                        f"📷 Image loaded: {os.path.basename(image_path)}", 'cyan'))
 
         print(color_text(f"User prompt: {actual_prompt}", 'green'))
         if image_data:
