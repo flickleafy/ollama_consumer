@@ -176,12 +176,23 @@ def ask_ollama(prompt, model="llama3", system_prompt=None, image_data=None, use_
         return f"Exception: {str(e)}"
 
 
-def list_ollama_models():
-    """List all locally available models from Ollama"""
+def list_ollama_models(exclude_blacklisted=True):
+    """
+    List all locally available models from Ollama
+
+    Args:
+        exclude_blacklisted (bool): Whether to exclude blacklisted models from the list
+
+    Returns:
+        list: List of model dictionaries, or error string if failed
+    """
     try:
         response = requests.get('http://localhost:11434/api/tags')
         if response.status_code == 200:
-            return response.json().get('models', [])
+            models = response.json().get('models', [])
+            if exclude_blacklisted:
+                models = filter_blacklisted_models(models)
+            return models
         else:
             return f"Error: {response.status_code}"
     except Exception as e:
@@ -973,6 +984,12 @@ def format_model_capabilities(capabilities):
 
 def select_model(previous_model=None):
     """Display a numbered list of models and ask user to choose one. Handle model switching."""
+    # Check for blacklisted models and show info
+    blacklisted_models = get_blacklisted_models()
+    if blacklisted_models:
+        print(
+            f"\n📋 Note: {len(blacklisted_models)} model(s) are blacklisted and hidden: {', '.join(blacklisted_models)}")
+
     models = list_ollama_models()
     if not isinstance(models, list):
         print(f"Error retrieving models: {models}")
@@ -1083,6 +1100,108 @@ def format_model_response(response):
             formatted_response += color_text(part, 'yellow')
 
     return formatted_response
+
+
+def get_blacklisted_models():
+    """
+    Get list of blacklisted models from config.ini
+
+    Returns:
+        list: List of blacklisted model names, or empty list if none/error
+    """
+    try:
+        config = configparser.ConfigParser()
+
+        # Check if config file exists
+        config_path = 'config.ini'
+        if not os.path.exists(config_path):
+            return []
+
+        config.read(config_path)
+
+        # Get blacklisted models from the [blacklist] section
+        if config.has_section('blacklist') and config.has_option('blacklist', 'models'):
+            blacklist_str = config.get('blacklist', 'models')
+
+            # Parse the list - handle different formats:
+            # - JSON array: ["model1", "model2"]
+            # - Comma-separated: model1, model2, model3
+            # - Newline-separated: model1\nmodel2\nmodel3
+
+            blacklist_str = blacklist_str.strip()
+            if not blacklist_str:
+                return []
+
+            # Try parsing as JSON array first
+            try:
+                blacklisted_models = json.loads(blacklist_str)
+                if isinstance(blacklisted_models, list):
+                    return [str(model).strip() for model in blacklisted_models if model]
+            except (ValueError, json.JSONDecodeError):
+                pass
+
+            # Fall back to comma or newline separated
+            if ',' in blacklist_str:
+                # Comma-separated
+                blacklisted_models = [model.strip().strip('"\'')
+                                      for model in blacklist_str.split(',')]
+            else:
+                # Newline-separated or single model
+                blacklisted_models = [model.strip().strip('"\'')
+                                      for model in blacklist_str.split('\n')]
+
+            # Filter out empty strings
+            return [model for model in blacklisted_models if model]
+
+        return []
+
+    except Exception as e:
+        # Print error but don't fail the application
+        print(f"Warning: Error reading blacklisted models from config: {e}")
+        return []
+
+
+def filter_blacklisted_models(models, show_message=False):
+    """
+    Filter out blacklisted models from a list of models
+
+    Args:
+        models (list): List of model dictionaries or model names
+        show_message (bool): Whether to show a message about filtered models
+
+    Returns:
+        list: Filtered list with blacklisted models removed
+    """
+    blacklisted_models = get_blacklisted_models()
+    if not blacklisted_models:
+        return models
+
+    if not models:
+        return models
+
+    # Handle both list of dicts and list of strings
+    if isinstance(models[0], dict):
+        # List of model dictionaries
+        original_count = len(models)
+        filtered_models = [
+            model for model in models
+            if model.get('name', '') not in blacklisted_models
+        ]
+    else:
+        # List of model names (strings)
+        original_count = len(models)
+        filtered_models = [
+            model for model in models
+            if model not in blacklisted_models
+        ]
+
+    filtered_count = original_count - len(filtered_models)
+
+    if filtered_count > 0 and show_message:
+        print(
+            f"📋 Filtered out {filtered_count} blacklisted model(s): {', '.join(blacklisted_models)}")
+
+    return filtered_models
 
 
 if __name__ == "__main__":

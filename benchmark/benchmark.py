@@ -30,7 +30,7 @@ from main import (
     model_manager,
     ask_ollama,
     get_model_info,
-    get_system_prompt_from_config
+    get_system_prompt_from_config,
 )
 
 # Default benchmark questions
@@ -53,69 +53,6 @@ MODEL_SIZE_CATEGORIES = {
     "medium": {"min": 16, "max": 100, "description": "Medium models (16B-100B parameters)"},
     "large": {"min": 100, "max": float('inf'), "description": "Large models (>100B parameters)"}
 }
-
-
-def get_blacklisted_models():
-    """
-    Get list of blacklisted models from config.ini
-
-    Returns:
-        list: List of blacklisted model names, or empty list if none/error
-    """
-    try:
-        config = configparser.ConfigParser()
-
-        # Check if config file exists
-        config_path = 'config.ini'
-        if not os.path.exists(config_path):
-            return []
-
-        config.read(config_path)
-
-        # Get blacklisted models from the [blacklist] section
-        if config.has_section('blacklist') and config.has_option('blacklist', 'models'):
-            blacklist_str = config.get('blacklist', 'models')
-
-            # Parse the list - handle different formats:
-            # - JSON array: ["model1", "model2"]
-            # - Comma-separated: model1, model2, model3
-            # - Newline-separated: model1\nmodel2\nmodel3
-
-            blacklist_str = blacklist_str.strip()
-            if not blacklist_str:
-                return []
-
-            # Try parsing as JSON array first
-            try:
-                import json
-                blacklisted_models = json.loads(blacklist_str)
-                if isinstance(blacklisted_models, list):
-                    return [str(model).strip() for model in blacklisted_models if model]
-            except (ValueError, json.JSONDecodeError):
-                pass
-
-            # Fall back to comma or newline separated
-            if ',' in blacklist_str:
-                # Comma-separated
-                blacklisted_models = [model.strip().strip('"\'')
-                                      for model in blacklist_str.split(',')]
-            else:
-                # Newline-separated or single model
-                blacklisted_models = [model.strip().strip('"\'')
-                                      for model in blacklist_str.split('\n')]
-
-            # Filter out empty strings
-            return [model for model in blacklisted_models if model]
-
-        return []
-
-    except Exception as e:
-        # Log error but don't fail the benchmark
-        logger = logging.getLogger('benchmark')
-        if logger.handlers:  # Only log if logger is configured
-            logger.warning(
-                f"Error reading blacklisted models from config: {e}")
-        return []
 
 
 def estimate_moe_parameters(experts, expert_size):
@@ -625,12 +562,6 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
             logger.info(
                 f"✅ Using {len(model_names)} manually selected models")
     else:
-        # Get blacklisted models first for logging
-        blacklisted_models = get_blacklisted_models()
-        if blacklisted_models:
-            logger.info(
-                f"📋 Blacklisted models: {', '.join(blacklisted_models)}")
-
         models = get_available_models()
         if not isinstance(models, list):
             error_msg = f"Error getting models: {models}"
@@ -1025,23 +956,11 @@ def get_available_models():
         list: List of model names (excluding blacklisted), or None if error
     """
     try:
-        models = list_ollama_models()
+        models = list_ollama_models(
+            exclude_blacklisted=True)  # Use built-in filtering
         if isinstance(models, list):
             model_names = [model['name'] for model in models]
             model_names.sort()  # Sort alphabetically
-
-            # Get blacklisted models and filter them out
-            blacklisted_models = get_blacklisted_models()
-            if blacklisted_models:
-                original_count = len(model_names)
-                model_names = [
-                    name for name in model_names if name not in blacklisted_models]
-                filtered_count = original_count - len(model_names)
-
-                if filtered_count > 0:
-                    print(
-                        f"📋 Filtered out {filtered_count} blacklisted model(s): {', '.join(blacklisted_models)}")
-
             return model_names
         else:
             print(f"❌ Error getting models: {models}")
