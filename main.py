@@ -199,11 +199,30 @@ def list_ollama_models(exclude_blacklisted=True):
         return f"Connection error: {str(e)}"
 
 
-def get_system_prompt_from_config():
-    """Get system prompt from config file if it exists"""
+def get_system_prompt_from_config(content_type=None):
+    """
+    Get system prompt from config file based on content type
+
+    Args:
+        content_type (str): Type of content - 'image', 'code', 'srt', or None for default
+
+    Returns:
+        str: Appropriate system prompt for the content type
+    """
     try:
         config = configparser.ConfigParser()
         config.read(CONFIG_PATH)
+
+        # If content type is specified and specialized prompt exists, use it
+        if content_type and config.has_section('system_prompts'):
+            if content_type == 'image' and config.has_option('system_prompts', 'image_analysis'):
+                return config.get('system_prompts', 'image_analysis', fallback='').strip()
+            elif content_type == 'code' and config.has_option('system_prompts', 'code_analysis'):
+                return config.get('system_prompts', 'code_analysis', fallback='').strip()
+            elif content_type == 'srt' and config.has_option('system_prompts', 'srt_analysis'):
+                return config.get('system_prompts', 'srt_analysis', fallback='').strip()
+
+        # Fall back to default system prompt
         return config.get('ollama', 'system_prompt', fallback='').strip()
     except Exception:
         return ''
@@ -368,7 +387,7 @@ def get_images_from_folder():
     Returns:
         list: List of image filenames, or empty list if folder doesn't exist
     """
-    images_folder = os.path.join(os.path.dirname(__file__), 'images')
+    images_folder = os.path.join(os.path.dirname(__file__), 'content/images')
 
     if not os.path.exists(images_folder):
         return []
@@ -390,6 +409,44 @@ def get_images_from_folder():
         return sorted(image_files)
     except Exception as e:
         print(f"Error reading images folder: {e}")
+        return []
+
+
+def get_texts_from_folder():
+    """
+    Get list of text files from the texts folder
+
+    Returns:
+        list: List of text filenames, or empty list if folder doesn't exist
+    """
+    texts_folder = os.path.join(os.path.dirname(__file__), 'content/texts')
+
+    if not os.path.exists(texts_folder):
+        return []
+
+    # Common text file extensions
+    texts_extensions = {
+        '.txt', '.md', '.rst', '.csv', '.json', '.xml', '.yaml', '.yml',
+        '.py', '.js', '.ts', '.java', '.c', '.cpp', '.h', '.hpp', '.cs',
+        '.go', '.rb', '.php', '.html', '.htm', '.css', '.scss', '.less',
+        '.sh', '.bat', '.ps1', '.ini', '.cfg', '.toml', '.pl', '.lua',
+        '.swift', '.kt', '.dart', '.scala', '.sql', '.r', '.jl', '.m',
+        '.vb', '.asm', '.s', '.vue', '.jsx', '.tsx'
+    }
+
+    try:
+        all_files = os.listdir(texts_folder)
+        text_files = []
+
+        for file in all_files:
+            file_lower = file.lower()
+            if any(file_lower.endswith(ext) for ext in texts_extensions):
+                text_files.append(file)
+
+        # Sort alphabetically for consistent ordering
+        return sorted(text_files)
+    except Exception as e:
+        print(f"Error reading texts folder: {e}")
         return []
 
 
@@ -437,6 +494,50 @@ def select_image_from_folder():
             return None
 
 
+def select_text_from_folder():
+    """
+    Display available text files from the texts folder and let user choose one
+
+    Returns:
+        str: Full path to selected text file, or None if cancelled/no texts
+    """
+    texts = get_texts_from_folder()
+
+    if not texts:
+        print(color_text("📄 No text files found in the 'texts' folder.", 'yellow'))
+        return None
+
+    print(color_text("\n📄 Available text files in 'texts' folder:", 'cyan'))
+    for i, text_file in enumerate(texts, 1):
+        print(f"{i}. {text_file}")
+
+    print("0. Cancel (no text file)")
+
+    while True:
+        try:
+            choice = input(color_text(
+                "\nSelect a text file by number: ", 'green'))
+
+            if choice.strip() == '0' or choice.strip().lower() == 'cancel':
+                return None
+
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(texts):
+                selected_text = texts[choice_num - 1]
+                texts_folder = os.path.join(
+                    os.path.dirname(__file__), 'content/texts')
+                full_path = os.path.join(texts_folder, selected_text)
+                print(color_text(f"📄 Selected: {selected_text}", 'cyan'))
+                return full_path
+            else:
+                print(f"Please enter a number between 0 and {len(texts)}")
+        except ValueError:
+            print("Please enter a valid number")
+        except KeyboardInterrupt:
+            print(color_text("\nText selection cancelled.", 'yellow'))
+            return None
+
+
 def show_image_help():
     """Show help information about image input options"""
     print(color_text("\n📷 Image Input Options:", 'cyan'))
@@ -447,6 +548,24 @@ def show_image_help():
     print(color_text("  Examples:", 'yellow'))
     print("    img: What do you see?")
     print("    img:/home/user/photo.png What's in this image?")
+    print()
+
+
+def show_text_help():
+    """Show help information about text input options and automatic system prompt selection"""
+    print(color_text("\n📄 Text Input Options:", 'cyan'))
+    print("  1. 'text:' - Choose from texts folder")
+    print("  2. 'text:filename.txt your prompt' - Use specific file from texts folder")
+    print("  3. 'text:/full/path/to/file.txt your prompt' - Use full file path")
+    print("  4. Type 'texts' to see available text files in folder")
+    print(color_text("  Automatic System Prompt Selection:", 'yellow'))
+    print("    🎯 Code files (.py, .js, .java, etc.) → Code Analysis prompt")
+    print("    🎯 Subtitle files (.srt, .vtt, etc.) → Video Transcript Analysis prompt")
+    print("    🎯 Other text files → Default prompt")
+    print(color_text("  Examples:", 'yellow'))
+    print("    text: Analyze this file")
+    print("    text:script.py Explain what this code does")
+    print("    text:video_transcript.srt Summarize this video")
     print()
 
 
@@ -1204,6 +1323,166 @@ def filter_blacklisted_models(models, show_message=False):
     return filtered_models
 
 
+def handle_special_input_tag(prompt):
+    """
+    Handle prompts starting with 'img:' or 'text:' tags.
+    For 'img:', use select_image_from_folder and prepare_image_input.
+    For 'text:', use select_text_from_folder and read the text file.
+    Returns:
+        tuple: (actual_prompt, image_data, text_data, content_type)
+            - actual_prompt: str, the prompt to send to the model
+            - image_data: str or None, base64 image data if applicable
+            - text_data: str or None, text file contents if applicable
+            - content_type: str or None, detected content type ('image', 'code', 'srt', etc.)
+    """
+    if prompt.startswith('img:'):
+        parts = prompt[4:].split(' ', 1)
+        if len(parts) == 0 or parts[0].strip() == '':
+            selected_image_path = select_image_from_folder()
+            if selected_image_path is None:
+                return None, None, None, None  # User cancelled
+            actual_prompt = input(color_text(
+                "Enter your prompt for the image: ", 'green'))
+            if not actual_prompt.strip():
+                actual_prompt = "Describe this image."
+            image_data = prepare_image_input(selected_image_path)
+            if image_data is None:
+                print(color_text(
+                    f"❌ Failed to load image: {selected_image_path}", 'red'))
+                return None, None, None, None
+            else:
+                print(color_text(
+                    f"📷 Image loaded: {os.path.basename(selected_image_path)}", 'cyan'))
+            return actual_prompt, image_data, None, 'image'
+        else:
+            image_path = parts[0]
+            actual_prompt = parts[1] if len(
+                parts) > 1 else "Describe this image."
+            if not os.path.sep in image_path and not os.path.exists(image_path):
+                images_folder = os.path.join(
+                    os.path.dirname(__file__), 'images')
+                full_image_path = os.path.join(images_folder, image_path)
+                if os.path.exists(full_image_path):
+                    image_path = full_image_path
+            image_data = prepare_image_input(image_path)
+            if image_data is None:
+                print(color_text(
+                    f"❌ Failed to load image: {image_path}", 'red'))
+                if not os.path.exists(image_path):
+                    images = get_images_from_folder()
+                    if images:
+                        print(color_text(
+                            "Available images in folder:", 'yellow'))
+                        for img in images:
+                            print(f"  - {img}")
+                return None, None, None, None
+            else:
+                print(color_text(
+                    f"📷 Image loaded: {os.path.basename(image_path)}", 'cyan'))
+            return actual_prompt, image_data, None, 'image'
+    elif prompt.startswith('text:'):
+        parts = prompt[5:].split(' ', 1)
+        if len(parts) == 0 or parts[0].strip() == '':
+            selected_text_path = select_text_from_folder()
+            if selected_text_path is None:
+                return None, None, None, None  # User cancelled
+            actual_prompt = input(color_text(
+                "Enter your prompt for the text file: ", 'green'))
+            if not actual_prompt.strip():
+                actual_prompt = "Analyze this text."
+            try:
+                with open(selected_text_path, 'r', encoding='utf-8') as f:
+                    text_data = f.read()
+                print(color_text(
+                    f"📄 Text loaded: {os.path.basename(selected_text_path)}", 'cyan'))
+                # Detect content type based on file path and content
+                content_type = detect_content_type(
+                    selected_text_path, text_data)
+            except Exception as e:
+                print(color_text(
+                    f"❌ Failed to load text: {selected_text_path} ({e})", 'red'))
+                return None, None, None, None
+            return actual_prompt, None, text_data, content_type
+        else:
+            text_path = parts[0]
+            actual_prompt = parts[1] if len(
+                parts) > 1 else "Analyze this text."
+            if not os.path.sep in text_path and not os.path.exists(text_path):
+                texts_folder = os.path.join(
+                    os.path.dirname(__file__), 'content/texts')
+                full_text_path = os.path.join(texts_folder, text_path)
+                if os.path.exists(full_text_path):
+                    text_path = full_text_path
+            try:
+                with open(text_path, 'r', encoding='utf-8') as f:
+                    text_data = f.read()
+                print(color_text(
+                    f"📄 Text loaded: {os.path.basename(text_path)}", 'cyan'))
+                # Detect content type based on file path and content
+                content_type = detect_content_type(text_path, text_data)
+            except Exception as e:
+                print(color_text(
+                    f"❌ Failed to load text: {text_path} ({e})", 'red'))
+                return None, None, None, None
+            return actual_prompt, None, text_data, content_type
+    else:
+        return None, None, None, None
+
+
+def detect_content_type(file_path=None, text_data=None):
+    """
+    Detect content type based on file extension and content
+
+    Args:
+        file_path (str): Path to the file
+        text_data (str): Text content of the file
+
+    Returns:
+        str: Content type - 'code', 'srt', or None for generic text
+    """
+    if file_path:
+        file_lower = file_path.lower()
+
+        # Check for SRT/subtitle files
+        if file_lower.endswith(('.srt', '.vtt', '.ass', '.ssa', '.sub')):
+            return 'srt'
+
+        # Check for source code file extensions
+        code_extensions = {
+            '.py', '.js', '.ts', '.java', '.c', '.cpp', '.h', '.hpp', '.cs',
+            '.go', '.rb', '.php', '.html', '.htm', '.css', '.scss', '.less',
+            '.sh', '.bat', '.ps1', '.pl', '.lua', '.swift', '.kt', '.dart',
+            '.scala', '.sql', '.r', '.jl', '.m', '.vb', '.asm', '.s',
+            '.vue', '.jsx', '.tsx', '.json', '.xml', '.yaml', '.yml'
+        }
+
+        if any(file_lower.endswith(ext) for ext in code_extensions):
+            return 'code'
+
+    # If we have text data, try to detect SRT format by content
+    if text_data:
+        # SRT files typically have timestamp patterns like "00:01:23,456 --> 00:01:26,789"
+        srt_pattern = r'\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,\.]\d{3}'
+        if re.search(srt_pattern, text_data):
+            return 'srt'
+
+        # Check for common code patterns (basic heuristics)
+        code_patterns = [
+            r'def\s+\w+\s*\(',  # Python functions
+            r'function\s+\w+\s*\(',  # JavaScript functions
+            r'class\s+\w+',  # Class definitions
+            r'import\s+\w+',  # Import statements
+            r'#include\s*<',  # C/C++ includes
+            r'<?xml\s+version',  # XML declarations
+            r'<!DOCTYPE\s+html',  # HTML doctypes
+        ]
+
+        if any(re.search(pattern, text_data, re.IGNORECASE) for pattern in code_patterns):
+            return 'code'
+
+    return None  # Generic text, use default prompt
+
+
 if __name__ == "__main__":
     print("\nOllama Chat Interface:")
 
@@ -1244,6 +1523,8 @@ if __name__ == "__main__":
         if is_vision_model(selected_model):
             print(color_text(
                 "  📷 For images: 'img:' to choose from images folder, 'help-img' for help", 'cyan'))
+        print(color_text(
+            "  📄 For text/code: 'text:' to choose from texts folder, 'help-text' for help", 'cyan'))
 
         prompt = input("> ")
         if prompt.lower() in ['exit', 'quit', 'q']:
@@ -1276,76 +1557,56 @@ if __name__ == "__main__":
         elif prompt.lower() in ['help-img', 'img-help', 'image-help']:
             show_image_help()
             continue
+        elif prompt.lower() in ['help-text', 'text-help']:
+            show_text_help()
+            continue
+        elif prompt.lower() in ['texts', 'list-texts']:
+            # Show available text files
+            texts = get_texts_from_folder()
+            if texts:
+                print(color_text("\n📄 Available text files in 'texts' folder:", 'cyan'))
+                for i, text_file in enumerate(texts, 1):
+                    print(f"  {i}. {text_file}")
+                print(color_text(
+                    "Use 'text:filename.txt your prompt' to use a specific text file.", 'yellow'))
+            else:
+                print(color_text(
+                    "📄 No text files found in the 'texts' folder.", 'yellow'))
+            continue
+        elif prompt.lower() in ['help-text', 'text-help', 'file-help']:
+            show_text_help()
+            continue
 
         # Parse image input if present
         image_data = None
         actual_prompt = prompt
+        content_type = None
 
-        if prompt.startswith('img:'):
-            # Extract image path and prompt
-            parts = prompt[4:].split(' ', 1)
-
-            if len(parts) == 0 or parts[0].strip() == '':
-                # User typed just 'img:' - show image selection
-                selected_image_path = select_image_from_folder()
-                if selected_image_path is None:
-                    continue  # User cancelled image selection
-
-                # Get prompt for the image
-                actual_prompt = input(color_text(
-                    "Enter your prompt for the image: ", 'green'))
-                if not actual_prompt.strip():
-                    actual_prompt = "Describe this image."
-
-                image_data = prepare_image_input(selected_image_path)
-                if image_data is None:
-                    print(color_text(
-                        f"❌ Failed to load image: {selected_image_path}", 'red'))
-                    continue
-                else:
-                    print(color_text(
-                        f"📷 Image loaded: {os.path.basename(selected_image_path)}", 'cyan'))
-            else:
-                # User specified an image path/filename
-                image_path = parts[0]
-                actual_prompt = parts[1] if len(
-                    parts) > 1 else "Describe this image."
-
-                # Check if it's just a filename (look in images folder)
-                if not os.path.sep in image_path and not os.path.exists(image_path):
-                    images_folder = os.path.join(
-                        os.path.dirname(__file__), 'images')
-                    full_image_path = os.path.join(images_folder, image_path)
-                    if os.path.exists(full_image_path):
-                        image_path = full_image_path
-
-                # Prepare image data
-                image_data = prepare_image_input(image_path)
-                if image_data is None:
-                    print(color_text(
-                        f"❌ Failed to load image: {image_path}", 'red'))
-
-                    # Suggest available images if file not found
-                    if not os.path.exists(image_path):
-                        images = get_images_from_folder()
-                        if images:
-                            print(color_text(
-                                "Available images in folder:", 'yellow'))
-                            for img in images[:5]:  # Show first 5
-                                print(f"  - {img}")
-                            if len(images) > 5:
-                                print(f"  ... and {len(images) - 5} more")
-                    continue
-                else:
-                    print(color_text(
-                        f"📷 Image loaded: {os.path.basename(image_path)}", 'cyan'))
+        # Unified special input tag handler (img:, text:, etc.)
+        if prompt.startswith('img:') or prompt.startswith('text:'):
+            actual_prompt, image_data, text_data, content_type = handle_special_input_tag(
+                prompt)
+            if actual_prompt is None:
+                continue  # User cancelled or error
+            # If text_data is loaded, append it to the prompt for model input
+            if text_data:
+                actual_prompt = f"{actual_prompt}\n\n{text_data}"
 
         print(color_text(f"User prompt: {actual_prompt}", 'green'))
         if image_data:
             print(color_text("📷 Image included in request", 'cyan'))
+        if content_type:
+            content_type_names = {
+                'image': 'Image Analysis',
+                'code': 'Code Analysis',
+                'srt': 'Video Transcript Analysis'
+            }
+            if content_type in content_type_names:
+                print(color_text(
+                    f"🎯 Using specialized prompt for: {content_type_names[content_type]}", 'cyan'))
 
         print("System: Sending prompt to model...")
-        system_prompt = get_system_prompt_from_config()
+        system_prompt = get_system_prompt_from_config(content_type)
 
         # Start timing the API request
         start_time = time.time()
