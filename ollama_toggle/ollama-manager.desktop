@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Ollama Service Manager
+Comment=Start, stop, enable or disable Ollama AI service
+Exec=/home/xxx/Scripts/ollama-toggle.py
+Icon=network-server
+Terminal=false
+Categories=System;Settings;
+Keywords=ollama;ai;service;server;toggle;
+StartupNotify=true
+# Note: Uses pkexec for GUI privilege escalation when available
