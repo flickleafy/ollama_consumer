@@ -2,43 +2,363 @@
 current_loaded_model = phi4-reasoning:latest
 system_prompt = You are a helpful AI assistant. Please provide clear, accurate, and concise responses in plain english language.
 
-# Advanced model parameters
-temperature = 0.7
-top_k = 40
-top_p = 0.9
-repeat_penalty = 1.1
-seed = -1
-num_predict = -1
-num_ctx = 2048
-num_batch = 512
-num_gqa = 1
-num_gpu = -1
-main_gpu = 0
-low_vram = false
-f16_kv = true
-logits_all = false
-vocab_only = false
-use_mmap = true
-use_mlock = false
-num_thread = -1
+[llm_presets]
+# Default - Standard Ollama settings for balanced performance and quality
+default = {
+    "temperature": 0.8,
+    "top_k": 40,
+    "top_p": 0.9,
+    "repeat_penalty": 1.1,
+    "seed": -1,
+    "num_predict": 128,
+    "num_ctx": 2048,
+    "num_batch": 512,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "stream_response": false,
+    "raw_response": false
+  }
+  
+# Creative Writing - Optimized for creative and diverse outputs
+creative_writing = {
+    "temperature": 0.9,
+    "top_k": 50,
+    "top_p": 0.95,
+    "repeat_penalty": 1.05,
+    "seed": -1,
+    "num_predict": 2048,
+    "num_ctx": 4096,
+    "num_batch": 256,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "auto",
+    "thinking_format": "xml",
+    "reasoning_depth": "creative",
+    "stream_response": false,
+    "raw_response": false
+  }
 
-# Model-specific behavior controls
-enable_thinking = auto
-thinking_format = xml
-reasoning_depth = normal
-stream_response = false
-raw_response = false
+# Coding - Optimized for accuracy, precision, and minimal hallucination
+coding = {
+    "temperature": 0.1,
+    "top_k": 20,
+    "top_p": 0.8,
+    "repeat_penalty": 1.15,
+    "seed": 42,
+    "num_predict": 1024,
+    "num_ctx": 8192,
+    "num_batch": 512,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "true",
+    "thinking_format": "xml",
+    "reasoning_depth": "deep",
+    "stream_response": false,
+    "raw_response": false
+  }
 
-# Vision model parameters (for qwen2.5vl and other vision models)
-enable_vision = auto
-image_quality = high
-max_image_size = 1024
-image_format = auto
+# Text Analysis - Optimized for transcript/document analysis with high accuracy
+text_analysis = {
+    "temperature": 0.2,
+    "top_k": 25,
+    "top_p": 0.85,
+    "repeat_penalty": 1.12,
+    "seed": 123,
+    "num_predict": 1536,
+    "num_ctx": 6144,
+    "num_batch": 384,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "true",
+    "thinking_format": "xml",
+    "reasoning_depth": "analytical",
+    "stream_response": false,
+    "raw_response": false
+  }
+
+# Vision Models - Optimized for visual analysis with maximum accuracy
+vision_analysis = {
+    "temperature": 0.15,
+    "top_k": 30,
+    "top_p": 0.82,
+    "repeat_penalty": 1.1,
+    "seed": 456,
+    "num_predict": 1024,
+    "num_ctx": 4096,
+    "num_batch": 256,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "auto",
+    "thinking_format": "xml",
+    "reasoning_depth": "detailed",
+    "stream_response": false,
+    "raw_response": false,
+    "enable_vision": "true",
+    "image_quality": "high",
+    "max_image_size": 1536,
+    "image_format": "auto"
+  }
+
+# Reasoning/Thinking Models - Optimized for deep reasoning and problem solving
+reasoning_mode = {
+    "temperature": 0.3,
+    "top_k": 35,
+    "top_p": 0.88,
+    "repeat_penalty": 1.08,
+    "seed": -1,
+    "num_predict": 2048,
+    "num_ctx": 8192,
+    "num_batch": 512,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "true",
+    "thinking_format": "xml",
+    "reasoning_depth": "deep",
+    "stream_response": false,
+    "raw_response": false
+  }
+
+# MoE Models - Optimized for Mixture of Experts architectures
+moe_optimized = {
+    "temperature": 0.4,
+    "top_k": 40,
+    "top_p": 0.9,
+    "repeat_penalty": 1.1,
+    "seed": -1,
+    "num_predict": 1536,
+    "num_ctx": 4096,
+    "num_batch": 1024,
+    "num_gqa": 8,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": true,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": true,
+    "num_thread": -1,
+    "enable_thinking": "auto",
+    "thinking_format": "xml",
+    "reasoning_depth": "normal",
+    "stream_response": false,
+    "raw_response": false
+  }
+
+# Conversational - Balanced for natural dialogue and chat
+conversational = {
+    "temperature": 0.7,
+    "top_k": 40,
+    "top_p": 0.92,
+    "repeat_penalty": 1.05,
+    "seed": -1,
+    "num_predict": 512,
+    "num_ctx": 2048,
+    "num_batch": 256,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "false",
+    "thinking_format": "xml",
+    "reasoning_depth": "normal",
+    "stream_response": true,
+    "raw_response": false
+  }
+
+# Mathematical - Optimized for mathematical reasoning and calculations
+mathematical = {
+    "temperature": 0.05,
+    "top_k": 15,
+    "top_p": 0.75,
+    "repeat_penalty": 1.2,
+    "seed": 789,
+    "num_predict": 1024,
+    "num_ctx": 4096,
+    "num_batch": 384,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "true",
+    "thinking_format": "xml",
+    "reasoning_depth": "deep",
+    "stream_response": false,
+    "raw_response": false
+  }
+
+# Translation - Optimized for language translation tasks
+translation = {
+    "temperature": 0.25,
+    "top_k": 30,
+    "top_p": 0.85,
+    "repeat_penalty": 1.1,
+    "seed": 321,
+    "num_predict": 1024,
+    "num_ctx": 3072,
+    "num_batch": 256,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "auto",
+    "thinking_format": "xml",
+    "reasoning_depth": "normal",
+    "stream_response": false,
+    "raw_response": false
+  }
+
+# Summarization - Optimized for content summarization and extraction
+summarization = {
+    "temperature": 0.3,
+    "top_k": 25,
+    "top_p": 0.87,
+    "repeat_penalty": 1.15,
+    "seed": 654,
+    "num_predict": 768,
+    "num_ctx": 8192,
+    "num_batch": 512,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "true",
+    "thinking_format": "xml",
+    "reasoning_depth": "analytical",
+    "stream_response": false,
+    "raw_response": false
+  }
+
+# Performance - Optimized for speed and efficiency on limited resources
+performance = {
+    "temperature": 0.6,
+    "top_k": 30,
+    "top_p": 0.9,
+    "repeat_penalty": 1.1,
+    "seed": -1,
+    "num_predict": 256,
+    "num_ctx": 1024,
+    "num_batch": 128,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": true,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": false,
+    "use_mlock": false,
+    "num_thread": 4,
+    "enable_thinking": "false",
+    "thinking_format": "xml",
+    "reasoning_depth": "normal",
+    "stream_response": true,
+    "raw_response": false
+  }
+
+# Debugging - Optimized for code debugging and error analysis
+debugging = {
+    "temperature": 0.1,
+    "top_k": 20,
+    "top_p": 0.8,
+    "repeat_penalty": 1.2,
+    "seed": 999,
+    "num_predict": 1536,
+    "num_ctx": 6144,
+    "num_batch": 512,
+    "num_gqa": 1,
+    "num_gpu": -1,
+    "main_gpu": 0,
+    "low_vram": false,
+    "f16_kv": true,
+    "logits_all": false,
+    "vocab_only": false,
+    "use_mmap": true,
+    "use_mlock": false,
+    "num_thread": -1,
+    "enable_thinking": "true",
+    "thinking_format": "xml",
+    "reasoning_depth": "deep",
+    "stream_response": false,
+    "raw_response": false
+  }
 
 [system_prompts]
-image_analysis = You are an expert computer vision and image analysis assistant. 
-code_analysis = You are an expert programming assistant and code analyst. 
-srt_analysis = You are an expert transcript and subtitle analysis assistant. 
+image_analysis = You are an expert computer vision and image analysis assistant. {include here any specific instructions for image analysis}
+code_analysis = You are an expert programming assistant and code analyst. {include here any specific instructions for code analysis}
+srt_analysis = You are an expert transcript and subtitle analysis assistant. {include here any specific instructions for transcript analysis}
 
 [blacklist]
 # Models to exclude from benchmarking (JSON array format)

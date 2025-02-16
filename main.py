@@ -798,6 +798,113 @@ class ModelManager:
             print(f"Unexpected error: {e}")
 
 
+def get_llm_presets_from_config():
+    """
+    Get all LLM presets from config file
+
+    Returns:
+        dict: Dictionary of preset names and their parameters
+    """
+    try:
+        config = configparser.ConfigParser()
+        config.read(CONFIG_PATH)
+
+        presets = {}
+
+        if config.has_section('llm_presets'):
+            for preset_name in config.options('llm_presets'):
+                preset_json = config.get('llm_presets', preset_name)
+                try:
+                    preset_params = json.loads(preset_json)
+                    presets[preset_name] = preset_params
+                except json.JSONDecodeError as e:
+                    print(
+                        f"Warning: Invalid JSON in preset '{preset_name}': {e}")
+                    continue
+
+        return presets
+    except configparser.Error:
+        return {}
+    except Exception:
+        return {}
+
+
+def apply_llm_preset(preset_name):
+    """
+    Apply an LLM preset by temporarily modifying the config
+
+    Args:
+        preset_name (str): Name of the preset to apply
+
+    Returns:
+        bool: True if preset was applied successfully, False otherwise
+    """
+    try:
+        presets = get_llm_presets_from_config()
+
+        if preset_name not in presets:
+            print(f"❌ Preset '{preset_name}' not found")
+            return False
+
+        preset_params = presets[preset_name]
+
+        # Read current config
+        config = configparser.ConfigParser()
+        config.read(CONFIG_PATH)
+
+        # Ensure [ollama] section exists
+        if not config.has_section('ollama'):
+            config.add_section('ollama')
+
+        # Apply preset parameters to [ollama] section
+        for param, value in preset_params.items():
+            config.set('ollama', param, str(value))
+
+        # Write back to config
+        with open(CONFIG_PATH, 'w') as f:
+            config.write(f)
+
+        print(f"✅ Applied preset '{preset_name}' successfully")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error applying preset '{preset_name}': {e}")
+        return False
+
+
+def list_available_presets():
+    """
+    List all available LLM presets with descriptions
+
+    Returns:
+        dict: Dictionary of preset names and their descriptions
+    """
+    presets = get_llm_presets_from_config()
+
+    # Preset descriptions
+    descriptions = {
+        'creative_writing': 'Optimized for creative and diverse outputs with higher creativity',
+        'coding': 'High accuracy and precision for code generation and analysis',
+        'text_analysis': 'Optimized for transcript/document analysis with minimal hallucination',
+        'vision_analysis': 'Maximum accuracy for visual content analysis and interpretation',
+        'reasoning_mode': 'Deep reasoning and problem-solving capabilities',
+        'moe_optimized': 'Specialized settings for Mixture of Experts model architectures',
+        'conversational': 'Balanced parameters for natural dialogue and chat interactions',
+        'mathematical': 'Precise settings for mathematical reasoning and calculations',
+        'translation': 'Optimized for accurate language translation tasks',
+        'summarization': 'Efficient content summarization and key information extraction',
+        'performance': 'Speed and efficiency optimized for limited resource environments',
+        'debugging': 'Specialized for code debugging and error analysis tasks'
+    }
+
+    available_presets = {}
+    for preset_name in presets.keys():
+        available_presets[preset_name] = descriptions.get(
+            preset_name, 'Custom preset')
+
+    return available_presets
+
+
 # Create global model manager instance
 model_manager = ModelManager(CONFIG_PATH)
 
@@ -1193,6 +1300,181 @@ def select_model(previous_model=None):
             return previous_model or "llama3"
 
 
+def get_best_preset_for_task(content_type=None, model_name=None, prompt_text=None):
+    """
+    Automatically determine the best LLM preset based on task type and model capabilities
+
+    Args:
+        content_type (str): Detected content type ('image', 'code', 'srt', etc.)
+        model_name (str): Name of the selected model
+        prompt_text (str): The actual prompt text for analysis
+
+    Returns:
+        str: Best preset name for the task, or 'default' if no specific match
+    """
+    # Priority order: content_type > model_type > prompt_analysis
+
+    # 1. Content type based selection (highest priority)
+    if content_type == 'image':
+        return 'vision_analysis'
+    elif content_type == 'code':
+        return 'coding'
+    elif content_type == 'srt':
+        return 'text_analysis'
+
+    # 2. Model type based selection
+    if model_name:
+        model_lower = model_name.lower()
+
+        # Vision models
+        if is_vision_model(model_name):
+            return 'vision_analysis'
+
+        # Reasoning/thinking models
+        if is_thinking_model(model_name):
+            return 'reasoning_mode'
+
+        # MoE (Mixture of Experts) models
+        moe_keywords = ['moe', 'mixtral', 'deepseek-moe', 'expert']
+        if any(keyword in model_lower for keyword in moe_keywords):
+            return 'moe_optimized'
+
+        # Mathematical models
+        math_keywords = ['math', 'deepseek-math', 'mathstral']
+        if any(keyword in model_lower for keyword in math_keywords):
+            return 'mathematical'
+
+    # 3. Prompt analysis based selection (lowest priority)
+    if prompt_text:
+        prompt_lower = prompt_text.lower()
+
+        # Mathematical/calculation tasks
+        math_indicators = ['calculate', 'solve', 'equation', 'formula', 'math', 'algebra',
+                           'geometry', 'statistics', 'probability', 'derivative', 'integral']
+        if any(indicator in prompt_lower for indicator in math_indicators):
+            return 'mathematical'
+
+        # Coding/programming tasks
+        code_indicators = ['code', 'program', 'function', 'debug', 'error', 'bug',
+                           'algorithm', 'syntax', 'programming', 'script', 'refactor']
+        if any(indicator in prompt_lower for indicator in code_indicators):
+            return 'coding'
+
+        # Translation tasks
+        translation_indicators = ['translate', 'translation', 'language', 'español',
+                                  'français', 'deutsch', 'italiano', 'português', '中文', '日本語']
+        if any(indicator in prompt_lower for indicator in translation_indicators):
+            return 'translation'
+
+        # Creative writing tasks
+        creative_indicators = ['write', 'story', 'poem', 'creative', 'fiction', 'novel',
+                               'character', 'plot', 'narrative', 'dialogue', 'screenplay']
+        if any(indicator in prompt_lower for indicator in creative_indicators):
+            return 'creative_writing'
+
+        # Summarization tasks
+        summary_indicators = ['summary', 'summarize', 'summarise', 'brief', 'overview',
+                              'key points', 'main ideas', 'extract', 'condense']
+        if any(indicator in prompt_lower for indicator in summary_indicators):
+            return 'summarization'
+
+        # Analysis tasks
+        analysis_indicators = ['analyze', 'analyse', 'analysis', 'examine', 'evaluate',
+                               'assess', 'review', 'interpret', 'explain']
+        if any(indicator in prompt_lower for indicator in analysis_indicators):
+            return 'text_analysis'
+
+    # Default fallback
+    return 'default'
+
+
+def auto_apply_best_preset(content_type=None, model_name=None, prompt_text=None, silent=False):
+    """
+    Automatically apply the best preset for the detected task
+
+    Args:
+        content_type (str): Detected content type
+        model_name (str): Selected model name  
+        prompt_text (str): User prompt
+        silent (bool): If True, don't show preset application messages
+
+    Returns:
+        str: Applied preset name
+    """
+    best_preset = get_best_preset_for_task(
+        content_type, model_name, prompt_text)
+
+    if best_preset != 'default':
+        success = apply_llm_preset(best_preset)
+        if success and not silent:
+            preset_descriptions = {
+                'vision_analysis': 'Vision Analysis',
+                'coding': 'Code Analysis',
+                'text_analysis': 'Text Analysis',
+                'reasoning_mode': 'Deep Reasoning',
+                'moe_optimized': 'MoE Optimized',
+                'mathematical': 'Mathematical',
+                'translation': 'Translation',
+                'creative_writing': 'Creative Writing',
+                'summarization': 'Summarization'
+            }
+            description = preset_descriptions.get(
+                best_preset, best_preset.title())
+            print(color_text(
+                f"🎯 Auto-applied '{description}' preset for optimal performance", 'cyan'))
+
+    return best_preset
+
+
+def ask_preset_override(current_preset, available_presets):
+    """
+    Ask user if they want to override the automatically selected preset
+
+    Args:
+        current_preset (str): Currently selected/applied preset
+        available_presets (dict): Dictionary of available presets
+
+    Returns:
+        str: Chosen preset name, or current_preset if no override
+    """
+    print(color_text(f"\n🎛️ Current preset: {current_preset}", 'yellow'))
+    print("Available presets:")
+    preset_list = list(available_presets.keys())
+
+    for i, (preset_name, description) in enumerate(available_presets.items(), 1):
+        indicator = "✓" if preset_name == current_preset else " "
+        print(f"  {indicator} {i}. {preset_name} - {description}")
+
+    print("  0. Keep current preset")
+
+    while True:
+        try:
+            choice = input(color_text(
+                "\nOverride preset? (0 to keep current, number to change): ", 'green')).strip()
+
+            if choice == '0' or choice.lower() in ['n', 'no', '']:
+                return current_preset
+
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(preset_list):
+                selected_preset = preset_list[choice_num - 1]
+                if apply_llm_preset(selected_preset):
+                    print(color_text(
+                        f"✅ Applied '{selected_preset}' preset", 'green'))
+                    return selected_preset
+                else:
+                    print(color_text("❌ Failed to apply preset", 'red'))
+                    return current_preset
+            else:
+                print(
+                    f"Please enter a number between 0 and {len(preset_list)}")
+        except ValueError:
+            print("Please enter a valid number or press Enter to keep current")
+        except KeyboardInterrupt:
+            print("\nKeeping current preset")
+            return current_preset
+
+
 def color_text(text, color):
     colors = {
         'green': '\033[92m',
@@ -1521,6 +1803,23 @@ if __name__ == "__main__":
     selected_model = select_model()
     print(f"Using model: {selected_model}")
 
+    # Ask if user wants to override the default preset for this model
+    default_preset = get_best_preset_for_task(model_name=selected_model)
+    available_presets = list_available_presets()
+
+    if available_presets:
+        print(color_text(
+            f"🎯 Default preset for this model: {default_preset}", 'yellow'))
+        override_choice = input(color_text(
+            "Would you like to override the preset? (y/N): ", 'green')).strip().lower()
+
+        if override_choice in ['y', 'yes']:
+            selected_preset = ask_preset_override(
+                default_preset, available_presets)
+        else:
+            # Apply the default preset
+            auto_apply_best_preset(model_name=selected_model, silent=True)
+
     # Show model capabilities
     if is_vision_model(selected_model):
         print(color_text(
@@ -1531,7 +1830,7 @@ if __name__ == "__main__":
 
     while True:
         print(color_text(
-            "Enter your prompt (or 'exit' to quit, 's' to select new model):", 'green'))
+            "Enter your prompt (or 'exit' to quit, 's' to select new model, 'preset' to change preset):", 'green'))
         if is_vision_model(selected_model):
             print(color_text(
                 "  📷 For images: 'img:' to choose from images folder, 'help-img' for help", 'cyan'))
@@ -1546,6 +1845,25 @@ if __name__ == "__main__":
             selected_model = select_model(previous_model)
             print(f"Using model: {selected_model}")
 
+            # Ask if user wants to override the default preset for the new model
+            default_preset = get_best_preset_for_task(
+                model_name=selected_model)
+            available_presets = list_available_presets()
+
+            if available_presets:
+                print(color_text(
+                    f"🎯 Default preset for this model: {default_preset}", 'yellow'))
+                override_choice = input(color_text(
+                    "Would you like to override the preset? (y/N): ", 'green')).strip().lower()
+
+                if override_choice in ['y', 'yes']:
+                    selected_preset = ask_preset_override(
+                        default_preset, available_presets)
+                else:
+                    # Apply the default preset
+                    auto_apply_best_preset(
+                        model_name=selected_model, silent=True)
+
             # Show capabilities for new model
             if is_vision_model(selected_model):
                 print(color_text(
@@ -1553,6 +1871,33 @@ if __name__ == "__main__":
             if is_thinking_model(selected_model):
                 print(color_text(
                     "🧠 This model supports thinking mode! It may show reasoning in <think> tags.", 'cyan'))
+            continue
+        elif prompt.lower() in ['help', 'h', '?']:
+            print(color_text("\n📋 Available Commands:", 'cyan'))
+            print("  • exit/quit/q - Exit the program")
+            print("  • s - Select a new model")
+            print("  • preset/presets/p - Change LLM preset settings")
+            print("  • images/list-images - Show available images in folder")
+            print("  • texts/list-texts - Show available text files in folder")
+            print("  • help-img/img-help - Show image input help")
+            print("  • help-text/text-help - Show text input help")
+            print("  • help/h/? - Show this help message")
+            print(color_text("\n🎯 Automatic Features:", 'yellow'))
+            print("  • Auto-detects content type (code, images, subtitles)")
+            print("  • Auto-applies optimal LLM presets based on task")
+            print("  • Auto-selects specialized system prompts")
+            print()
+            continue
+        elif prompt.lower() in ['preset', 'presets', 'p']:
+            # Show current preset and allow changing it
+            available_presets = list_available_presets()
+            if available_presets:
+                current_preset = get_best_preset_for_task(
+                    model_name=selected_model)
+                selected_preset = ask_preset_override(
+                    current_preset, available_presets)
+            else:
+                print(color_text("❌ No presets available in config", 'red'))
             continue
         elif prompt.lower() in ['images', 'list-images']:
             # Show available images
@@ -1585,10 +1930,6 @@ if __name__ == "__main__":
                 print(color_text(
                     "📄 No text files found in the 'texts' folder.", 'yellow'))
             continue
-        elif prompt.lower() in ['help-text', 'text-help', 'file-help']:
-            show_text_help()
-            continue
-
         # Parse image input if present
         image_data = None
         actual_prompt = prompt
@@ -1603,6 +1944,10 @@ if __name__ == "__main__":
             # If text_data is loaded, append it to the prompt for model input
             if text_data:
                 actual_prompt = f"{actual_prompt}\n\n```\n{text_data}\n```"
+
+        # Automatically apply the best preset for the detected task
+        applied_preset = auto_apply_best_preset(
+            content_type, selected_model, actual_prompt)
 
         print(color_text(f"User prompt: {actual_prompt}", 'green'))
         if image_data:
