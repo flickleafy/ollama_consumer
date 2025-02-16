@@ -1602,7 +1602,7 @@ if __name__ == "__main__":
                 continue  # User cancelled or error
             # If text_data is loaded, append it to the prompt for model input
             if text_data:
-                actual_prompt = f"{actual_prompt}\n\n{text_data}"
+                actual_prompt = f"{actual_prompt}\n\n```\n{text_data}\n```"
 
         print(color_text(f"User prompt: {actual_prompt}", 'green'))
         if image_data:

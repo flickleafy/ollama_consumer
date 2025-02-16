@@ -35,6 +35,11 @@ image_quality = high
 max_image_size = 1024
 image_format = auto
 
+[system_prompts]
+image_analysis = You are an expert computer vision and image analysis assistant. 
+code_analysis = You are an expert programming assistant and code analyst. 
+srt_analysis = You are an expert transcript and subtitle analysis assistant. 
+
 [blacklist]
 # Models to exclude from benchmarking (JSON array format)
 # Examples:
