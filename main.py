@@ -224,6 +224,9 @@ def get_system_prompt_from_config(content_type=None):
 
         # Fall back to default system prompt
         return config.get('ollama', 'system_prompt', fallback='').strip()
+    except configparser.Error as e:
+        print(f"Warning: Error reading system prompt from config: {e}")
+        return ''
     except Exception:
         return ''
 
@@ -308,6 +311,9 @@ def get_advanced_params_from_config():
                 # 'auto' means model-dependent, don't set explicitly
 
         return params
+    except configparser.Error:
+        # Silently return empty dict if config has parsing errors
+        return {}
     except Exception:
         return {}
 
@@ -1232,7 +1238,7 @@ def get_blacklisted_models():
         config = configparser.ConfigParser()
 
         # Check if config file exists
-        config_path = 'config.ini'
+        config_path = CONFIG_PATH
         if not os.path.exists(config_path):
             return []
 
@@ -1274,6 +1280,12 @@ def get_blacklisted_models():
 
         return []
 
+    except configparser.Error as e:
+        # Only show this specific error if it's not related to the system_prompts section
+        if 'system_prompts' not in str(e):
+            print(
+                f"Warning: Error reading blacklisted models from config: {e}")
+        return []
     except Exception as e:
         # Print error but don't fail the application
         print(f"Warning: Error reading blacklisted models from config: {e}")
