@@ -25,12 +25,12 @@ import os
 import logging
 import configparser
 from datetime import datetime
+from infrastructure.ask_ollama import ask_ollama
+from infrastructure.get_model_info import get_model_info
+from infrastructure.get_system_prompt_from_config import get_system_prompt_from_config
+from infrastructure.list_ollama_models import list_ollama_models
 from main import (
-    list_ollama_models,
     model_manager,
-    ask_ollama,
-    get_model_info,
-    get_system_prompt_from_config,
 )
 
 # Default benchmark questions
@@ -534,7 +534,7 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
     # Generate output filename if not provided
     if output_file is None:
         timestamp = datetime.now().strftime("%Y-%m-%d-%H.%M.%S")
-        output_file = f"benchmark-{timestamp}.json"
+        output_file = f"benchmark/results/benchmark-{timestamp}.json"
 
     logger.info(f"Output file: {output_file}")
     logger.info(f"Questions to ask: {len(questions)}")
