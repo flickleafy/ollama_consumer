@@ -2,6 +2,117 @@ from .format_model_capabilities import format_model_capabilities
 from .get_blacklisted_models import get_blacklisted_models
 from .get_model_capabilities import get_model_capabilities
 from .list_ollama_models import list_ollama_models
+from .color_text import color_text
+import psutil
+import subprocess
+
+
+def get_system_total_ram():
+    """
+    Get total system RAM including GPU memory and system memory in bytes
+
+    Returns:
+        int: Total RAM in bytes
+    """
+    total_ram = 0
+
+    # Get system RAM
+    try:
+        system_ram = psutil.virtual_memory().total
+        total_ram += system_ram
+    except Exception:
+        # Fallback: assume 8GB system RAM
+        total_ram += 8 * 1024 * 1024 * 1024
+
+    # Get GPU memory (NVIDIA)
+    try:
+        result = subprocess.run(['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
+                                capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            gpu_memories = result.stdout.strip().split('\n')
+            for gpu_mem in gpu_memories:
+                if gpu_mem.strip():
+                    # Convert MB to bytes
+                    gpu_ram = int(gpu_mem.strip()) * 1024 * 1024
+                    total_ram += gpu_ram
+    except Exception:
+        # Fallback: assume no GPU or can't detect
+        pass
+
+    # Try ROCm for AMD GPUs
+    try:
+        result = subprocess.run(['rocm-smi', '--showmeminfo', 'vram'],
+                                capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            # Parse ROCm output (basic implementation)
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                if 'Total VRAM' in line or 'Memory Total' in line:
+                    # Extract memory size (this is a simplified parser)
+                    parts = line.split()
+                    for i, part in enumerate(parts):
+                        if part.isdigit() and i + 1 < len(parts):
+                            if 'GB' in parts[i + 1]:
+                                gpu_ram = int(part) * 1024 * 1024 * 1024
+                                total_ram += gpu_ram
+                            elif 'MB' in parts[i + 1]:
+                                gpu_ram = int(part) * 1024 * 1024
+                                total_ram += gpu_ram
+    except Exception:
+        pass
+
+    return total_ram
+
+
+def get_model_physical_size(model_info):
+    """
+    Get the physical size of the model on disk in bytes
+
+    Args:
+        model_info (dict): Model information from Ollama API
+
+    Returns:
+        int: Model size in bytes
+    """
+    try:
+        # The 'size' field from Ollama API contains the physical size in bytes
+        return model_info.get('size', 0)
+    except Exception:
+        return 0
+
+
+def determine_model_color(model_size_bytes, total_ram_bytes):
+    """
+    Determine the color for model display based on size vs RAM
+
+    Args:
+        model_size_bytes (int): Model size in bytes
+        total_ram_bytes (int): Total system RAM in bytes
+
+    Returns:
+        str: Color name for display ('red', 'yellow', or None for white)
+    """
+    if model_size_bytes == 0 or total_ram_bytes == 0:
+        return None  # Default color (white)
+
+    # Model size plus 10% overhead
+    model_with_10_percent = model_size_bytes * 1.1
+
+    # Model size plus 15% overhead
+    model_with_15_percent = model_size_bytes * 1.15
+
+    # Model size plus 20% overhead
+    model_with_20_percent = model_size_bytes * 1.2
+
+    if model_with_10_percent > total_ram_bytes:
+        # Model + 10% is bigger than total RAM - RED
+        return 'red'
+    elif model_with_15_percent <= total_ram_bytes and model_with_20_percent > total_ram_bytes:
+        # Model + 15% fits but model + 20% doesn't - ORANGE/YELLOW
+        return 'yellow'
+    else:
+        # Model + 20% fits with plenty of space - WHITE (default)
+        return None
 
 
 def select_model(previous_model=None, model_manager=None):
@@ -20,14 +131,37 @@ def select_model(previous_model=None, model_manager=None):
     # Sort models alphabetically by name
     models.sort(key=lambda model: model['name'].lower())
 
+    # Get total system RAM once
+    total_ram = get_system_total_ram()
+    total_ram_gb = total_ram / (1024 * 1024 * 1024)
+    print(f"💾 Total system RAM detected: {total_ram_gb:.1f} GB")
+
+    # Show color legend
+    print("\n🎨 Color Legend:")
+    print(f"  {color_text('Red', 'red')} - Model too large for available RAM (may cause issues)")
+    print(
+        f"  {color_text('Yellow', 'yellow')} - Model fits but with limited headroom")
+    print("  White - Model fits comfortably with plenty of RAM")
+
     print("\nAvailable Models:")
     for i, model in enumerate(models, 1):
         parameter_size = model.get('details', {}).get(
             'parameter_size', 'Unknown')
         capabilities = get_model_capabilities(model['name'])
         capabilities_formatted = format_model_capabilities(capabilities)
-        print(
-            f"{i}. {model['name']} - Parameters: {parameter_size}{capabilities_formatted}")
+
+        # Get model physical size and determine color
+        model_size_bytes = get_model_physical_size(model)
+        model_color = determine_model_color(model_size_bytes, total_ram)
+
+        # Format the model line
+        model_line = f"{i}. {model['name']} - Parameters: {parameter_size}{capabilities_formatted}"
+
+        # Apply color based on RAM requirements
+        if model_color:
+            print(color_text(model_line, model_color))
+        else:
+            print(model_line)
 
     while True:
         try:
