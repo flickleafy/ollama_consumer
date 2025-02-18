@@ -20,7 +20,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..')))
 
 import json
 import time
@@ -285,7 +286,7 @@ def setup_logging(log_file=None, verbose=True):
     """
     if log_file is None:
         timestamp = datetime.now().strftime("%Y-%m-%d-%H.%M.%S")
-        log_file = f"benchmark-{timestamp}.log"
+        log_file = f"logs/benchmark-{timestamp}.log"
 
     # Create logger
     logger = logging.getLogger('benchmark')
@@ -537,7 +538,10 @@ def run_benchmark(questions=None, output_file=None, log_file=None, verbose=True,
     # Generate output filename if not provided
     if output_file is None:
         timestamp = datetime.now().strftime("%Y-%m-%d-%H.%M.%S")
-        output_file = f"benchmark/results/benchmark-{timestamp}.json"
+        output_file = f"results/benchmark-{timestamp}.json"
+
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     logger.info(f"Output file: {output_file}")
     logger.info(f"Questions to ask: {len(questions)}")
