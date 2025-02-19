@@ -391,10 +391,10 @@ if __name__ == "__main__":
         start_time = time.time()
 
         response = ask_ollama(
-            actual_prompt,
-            selected_model,
-            system_prompt if system_prompt else None,
-            image_data
+            prompt=actual_prompt,
+            model=selected_model,
+            system_prompt=system_prompt if system_prompt else None,
+            image_data=image_data
         )
 
         # Stop timing and calculate elapsed time

@@ -1,6 +1,7 @@
 from .get_advanced_params_from_config import get_advanced_params_from_config
 from .is_vision_model import is_vision_model
 from .is_thinking_model import is_thinking_model
+from .get_model_info import get_model_context_length
 
 
 import requests
@@ -56,10 +57,12 @@ def ask_ollama(prompt, model="llama3", system_prompt=None, image_data=None, use_
                 'use_mlock': 'use_mlock',
                 'num_thread': 'num_thread'
             }
-
+            model_context_length = get_model_context_length(model)
             # Add supported parameters to payload
             for config_param, api_param in param_mapping.items():
-                if config_param in advanced_params:
+                if config_param == 'num_ctx':
+                    payload[api_param] = model_context_length
+                elif config_param in advanced_params:
                     payload[api_param] = advanced_params[config_param]
 
             # Handle streaming preference
