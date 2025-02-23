@@ -131,6 +131,15 @@ def select_model(previous_model=None, model_manager=None):
     # Sort models alphabetically by name
     models.sort(key=lambda model: model['name'].lower())
 
+    # Get currently loaded models from Ollama
+    loaded_models = []
+    if model_manager:
+        loaded_models_data = model_manager.get_loaded_models_from_ollama()
+        loaded_models = [model['name'] for model in loaded_models_data]
+        
+        if loaded_models:
+            print(f"\n🔋 Currently loaded in memory: {', '.join(loaded_models)}")
+
     # Get total system RAM once
     total_ram = get_system_total_ram()
     total_ram_gb = total_ram / (1024 * 1024 * 1024)
@@ -141,6 +150,7 @@ def select_model(previous_model=None, model_manager=None):
     print(f"  {color_text('Red', 'red')} - Model too large for available RAM (may cause issues)")
     print(
         f"  {color_text('Yellow', 'yellow')} - Model fits but with limited headroom")
+    print(f"  {color_text('Green', 'green')} - Model currently loaded in memory")
     print("  White - Model fits comfortably with plenty of RAM")
 
     print("\nAvailable Models:")
@@ -150,15 +160,22 @@ def select_model(previous_model=None, model_manager=None):
         capabilities = get_model_capabilities(model['name'])
         capabilities_formatted = format_model_capabilities(capabilities)
 
+        # Check if this model is currently loaded
+        is_loaded = model['name'] in loaded_models
+
         # Get model physical size and determine color
         model_size_bytes = get_model_physical_size(model)
         model_color = determine_model_color(model_size_bytes, total_ram)
 
         # Format the model line
         model_line = f"{i}. {model['name']} - Parameters: {parameter_size}{capabilities_formatted}"
+        if is_loaded:
+            model_line += " 🔋 (loaded)"
 
-        # Apply color based on RAM requirements
-        if model_color:
+        # Apply color based on RAM requirements and model status
+        if is_loaded:
+            print(color_text(model_line, 'green'))
+        elif model_color:
             print(color_text(model_line, model_color))
         else:
             print(model_line)
@@ -169,13 +186,20 @@ def select_model(previous_model=None, model_manager=None):
             if 1 <= choice <= len(models):
                 selected = models[choice-1]['name']
 
-                # Handle model switching
+                # Check if the selected model is already loaded
+                if model_manager and model_manager.is_model_loaded(selected):
+                    print(f"✅ Model {selected} is already loaded in memory.")
+                    # Update the config to reflect current selection but don't reload
+                    model_manager.set_current_loaded_model(selected)
+                    return selected
+
+                # Handle model switching for different models
                 if previous_model and selected != previous_model:
                     print(f"Unloading previous model: {previous_model}")
                     result = model_manager.unload_model(previous_model)
                     print(f"Unload result: {result['message']}")
 
-                # Load the selected model
+                # Load the selected model if it's not already loaded
                 print(f"Loading model: {selected} ...")
                 load_result = model_manager.load_model(selected)
 

@@ -232,3 +232,40 @@ class ModelManager:
             print(f"Error restarting Ollama service: {e}")
         except Exception as e:
             print(f"Unexpected error: {e}")
+
+    def get_loaded_models_from_ollama(self):
+        """Get list of currently loaded models from Ollama API using /api/ps endpoint"""
+        try:
+            response = requests.get('http://localhost:11434/api/ps', timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                loaded_models = []
+                if 'models' in data:
+                    for model_info in data['models']:
+                        loaded_models.append({
+                            'name': model_info.get('name', ''),
+                            'size': model_info.get('size', 0),
+                            'size_vram': model_info.get('size_vram', 0),
+                            'digest': model_info.get('digest', ''),
+                            'details': model_info.get('details', {}),
+                            'expires_at': model_info.get('expires_at', ''),
+                            'modified_at': model_info.get('modified_at', '')
+                        })
+                return loaded_models
+            else:
+                return []
+        except Exception as e:
+            # If we can't connect to Ollama or any other error, return empty list
+            return []
+
+    def is_model_loaded(self, model_name):
+        """Check if a specific model is currently loaded in Ollama's memory"""
+        loaded_models = self.get_loaded_models_from_ollama()
+        return any(model['name'] == model_name for model in loaded_models)
+
+    def get_currently_loaded_model_name(self):
+        """Get the name of the first currently loaded model (if any)"""
+        loaded_models = self.get_loaded_models_from_ollama()
+        if loaded_models:
+            return loaded_models[0]['name']  # Return the first loaded model
+        return None

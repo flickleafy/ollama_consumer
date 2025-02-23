@@ -397,6 +397,11 @@ def create_safe_filename(title, timestamp):
         # Fallback: use only digits from timestamp
         short_timestamp = re.sub(r'\D', '', timestamp)[:12]
 
+    # Ensure title is a string
+    if not isinstance(title, str):
+        title = str(title)
+    # Limit title length to 100 characters
+    title = title[:100]  
     # Remove/replace unsafe characters
     safe_name = re.sub(r'[<>:"/\\|?*]', '-', title)
     # Replace spaces with underscores
@@ -406,12 +411,10 @@ def create_safe_filename(title, timestamp):
     # Remove leading/trailing underscores and hyphens
     safe_name = safe_name.strip('_-')
 
-    # Ensure reasonable length
-    if len(safe_name) > 100:
-        safe_name = f"{safe_name[:100]}_{short_timestamp}"
-
     # Add timestamp if filename is too short or empty
     if len(safe_name) < 3:
-        safe_name = f"query_{short_timestamp}"
+        safe_name = f"{short_timestamp}_query_{safe_name}"
+    else:    
+        safe_name = f"{short_timestamp}_{safe_name}"
 
     return safe_name

@@ -412,29 +412,38 @@ def benchmark_model(model_name, questions, logger, verbose=True):
         if verbose:
             logger.info("  ⏱️  Loading model...")
 
-        # First, unload any currently loaded model
-        current_model = model_manager.get_current_loaded_model()
-        if current_model and current_model != model_name:
-            logger.debug(f"Unloading current model: {current_model}")
-            model_manager.unload_model(current_model)
-            time.sleep(1)  # Give it a moment to unload
-
-        # Load the target model and measure time
-        load_start = time.time()
-        load_result = model_manager.load_model(model_name)
-        load_end = time.time()
-
-        if not load_result['success']:
-            error_msg = f"Failed to load model {model_name}: {load_result['message']}"
-            model_results["errors"].append(error_msg)
+        # Check if model is already loaded
+        if model_manager.is_model_loaded(model_name):
+            logger.debug(f"Model {model_name} is already loaded in memory")
             if verbose:
-                logger.error(f"  ❌ {error_msg}")
-            return model_results
+                logger.info("  ✅ Model already loaded (0.000s)")
+            model_results["load_time"] = 0.000
+            # Update config to reflect current model without reloading
+            model_manager.set_current_loaded_model(model_name)
+        else:
+            # First, unload any currently loaded model
+            current_model = model_manager.get_current_loaded_model()
+            if current_model and current_model != model_name:
+                logger.debug(f"Unloading current model: {current_model}")
+                model_manager.unload_model(current_model)
+                time.sleep(1)  # Give it a moment to unload
 
-        model_results["load_time"] = round(load_end - load_start, 3)
-        if verbose:
-            logger.info(
-                f"  ✅ Loaded in {model_results['load_time']:.3f}s")
+            # Load the target model and measure time
+            load_start = time.time()
+            load_result = model_manager.load_model(model_name)
+            load_end = time.time()
+
+            if not load_result['success']:
+                error_msg = f"Failed to load model {model_name}: {load_result['message']}"
+                model_results["errors"].append(error_msg)
+                if verbose:
+                    logger.error(f"  ❌ {error_msg}")
+                return model_results
+
+            model_results["load_time"] = round(load_end - load_start, 3)
+            if verbose:
+                logger.info(
+                    f"  ✅ Loaded in {model_results['load_time']:.3f}s")
 
         # Benchmark each question
         total_inference_time = 0
